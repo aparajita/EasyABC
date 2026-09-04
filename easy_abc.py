@@ -451,37 +451,6 @@ def get_ghostscript_path():
     else:
         return None
 
-# browser = None
-# def upload_tune(tune, author):
-#     ''' upload the tune to the site ABC WIKI site folkwiki.se (this UI option is only visible if the OS language is Swedish) '''
-#     global browser
-#     import mechanize
-#     import tempfile
-#     tune = tune.replace('\r\n', '\n')
-#     text = '(:music:)\n%s\n(:musicend:)\n' % tune.strip()
-#     if not browser:
-#         browser = mechanize.Browser()
-#     response = browser.open('https://www.folkwiki.se/Meta/Nyl%c3%a5t?n=Meta.Nyl%c3%a5t&base=Musik.Musik&action=newnumbered')
-#     response = response.read()
-#     import pdb; pdb.set_trace()
-#     m = re.search(r"img src='(.*?action=captchaimage.*?)'", response)
-#     if m:
-#         captcha_url = m.group(1).encode('utf-8')
-#         f = tempfile.NamedTemporaryFile(delete=False)
-#         img_data = urlopen(captcha_url).read()
-
-#         urlretrieve(urlunparse(parsed), outpath)
-#         f.write(img_data)
-#         f.close()
-#         return ''
-#     browser.select_form(nr=1)
-#     browser['text'] = text.encode('utf-8')
-#     browser['author'] = author.encode('utf-8')
-#     response = browser.submit()
-#     url = response.geturl()
-#     url = url.split('?')[0]  # remove the part after the first '?'
-#     return url
-
 def launch_file(filepath):
     ''' open the given document using its associated program '''
     if wx.Platform == "__WXMSW__":
@@ -4013,7 +3982,6 @@ class MainFrame(wx.Frame):
         self.exclusive_file_mode = options.get('exclusive', False)
         self._current_file = None
         self.untitled_number = 1
-        self.author = ''
         self.record_thread = None
         self.zoom_factor = 1.0
         self.selected_note_indices = []
@@ -5265,18 +5233,6 @@ class MainFrame(wx.Frame):
                 self.manager.DetachPane(self.abc_assist_panel)
         self.manager.Update()
 
-
-    # def OnUploadTune(self, evt):
-    #     tune = self.GetSelectedTune()
-    #     if tune:
-    #         if not self.author:
-    #             dialog = wx.TextEntryDialog(self, _('Please enter your full name (your FolkWiki entries will henceforth be associated with this name): '), _('Enter your name'), '')
-    #             if dialog.ShowModal() != wx.ID_OK:
-    #                 return
-    #             self.author = dialog.GetValue().strip()
-
-    #         url = upload_tune(tune.abc, self.author)
-    #         webbrowser.open(url)
 
     def GetFileNameForTune(self, tune, file_extension):
         filename = tune.title
@@ -8740,7 +8696,6 @@ class MainFrame(wx.Frame):
                 self.manager.LoadPerspective(perspective)
         self.bpm_slider.SetValue(0)
         self.zoom_slider.SetValue(settings.get('score_zoom', 1000))
-        self.author = settings.get('author', '')
         self.mni_auto_refresh.Check(settings.get('auto_refresh', True))
         self.mni_reduced_margins.Check(settings.get('reduced_margins', True))
         self.mni_TA_active.Check(settings.get('typing_assistance_active', True))
@@ -8786,7 +8741,6 @@ class MainFrame(wx.Frame):
         settings['window_x'], settings['window_y'] = self.Position
         settings['window_width'], settings['window_height'] = self.Size
         settings['perspective'] = self.manager.SavePerspective()
-        settings['author'] = self.author
         settings['tempo'] = int(100.0 * self.get_tempo_multiplier()) # 1.3.6.4 [JWDJ] not really necessary since setting 'tempo' is not used anymore
         settings['score_zoom'] = self.zoom_slider.GetValue()
         settings['auto_refresh'] = self.mni_auto_refresh.IsChecked()
