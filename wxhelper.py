@@ -2,6 +2,15 @@ import wx
 
 WX4 = wx.version().startswith('4')
 
+# On macOS wxPython shadows the native wx.ColourPickerCtrl with a pure-Python
+# wx.PickerBase subclass whose __init__ calls SetPickerCtrl(), a setter wxWidgets
+# no longer exposes, so every instance raises AttributeError. The native control
+# is still there and works, so bind the name back to it. On other platforms
+# wx.ColourPickerCtrl already *is* the native control and this changes nothing.
+if not hasattr(wx.PickerBase, 'SetPickerCtrl'):
+    from wx import _core as _wx_core
+    wx.ColourPickerCtrl = _wx_core.ColourPickerCtrl
+
 if WX4:
     wx_cursor = wx.Cursor
     wx_colour = wx.Colour
