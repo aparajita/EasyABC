@@ -34,27 +34,11 @@ program_name = 'EasyABC ' + program_version
 
 import sys
 
-PY3 = sys.version_info >= (3,0,0)
-if not PY3:
-    print("Python 2 is no longer supported. Please use:")
-    print("   python3 easy_abc.py")
-    exit()
-
 abcm2ps_default_encoding = 'utf-8'  ## 'latin-1'
 import codecs
 utf8_byte_order_mark = codecs.BOM_UTF8  # chr(0xef) + chr(0xbb) + chr(0xbf) #'\xef\xbb\xbf'
 
-if PY3:
-    unichr = chr
-    xrange = range
-    def unicode(s):
-        if isinstance(s, bytes):
-            return s.decode()  # assumes utf-8
-        return s
-    max_int = sys.maxsize
-    basestring = str
-else:
-    max_int = sys.maxint
+max_int = sys.maxsize
 
 import os, os.path
 import wx
@@ -74,10 +58,7 @@ import re
 import subprocess
 import hashlib
 
-if sys.version_info >= (3,0,0):
-    import pickle as pickle # py3
-else:
-    import cPickle as pickle # py2
+import pickle
 
 import threading
 import shutil
@@ -392,7 +373,7 @@ def get_output_from_process(cmd, input=None, creationflags=None, cwd=None, bufsi
     stdin_pipe = None
     if input is not None:
         stdin_pipe = subprocess.PIPE
-        if isinstance(input, basestring):
+        if isinstance(input, str):
             input = input.encode(encoding, errors)
 
     if creationflags is None:
@@ -606,13 +587,8 @@ def process_MCM(abc):
 def get_hash_code(*args):
     hash = hashlib.md5()
     for arg in args:
-        if PY3 or type(arg) is unicode:
-            arg = arg.encode('utf-8', 'ignore')
-        hash.update(arg)
-        if PY3:
-            hash.update(program_name.encode('utf-8', 'ignore'))
-        else:
-            hash.update(program_name)
+        hash.update(arg.encode('utf-8', 'ignore'))
+        hash.update(program_name.encode('utf-8', 'ignore'))
     return hash.hexdigest()[:10]
 
 def change_abc_tempo(abc_code, tempo_multiplier):
@@ -1665,7 +1641,7 @@ class MusicUpdateThread(threading.Thread):
                     svg_files, error = abc_to_svg(abc_code, self.cache_dir, self.settings, target_file_name=file_name)
             except Abcm2psException as e:
                 # if abcm2ps crashes, then wait at least 10 seconds until next invocation
-                svg_files, error = [], unicode(e)
+                svg_files, error = [], str(e)
                 # wx.PostEvent(self.notify_window, MusicUpdateDoneEvent(-1, (svg_files, error)))
                 # time.sleep(10.0)
                 # continue
@@ -1673,7 +1649,7 @@ class MusicUpdateThread(threading.Thread):
                 # print(error_msg)
                 pass
             except Exception as e:
-                svg_files, error = [], unicode(e)
+                svg_files, error = [], str(e)
                 # error_msg = traceback.format_exc()
                 # print(error_msg)
                 pass
@@ -2600,10 +2576,7 @@ class MyVoicePage(wx.Panel):
         midi_box.Add(wx.StaticText(self, wx.ID_ANY, _('L/R Balance:')), pos=(0,6), span=(0,2), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=border)
 
         # For each of the 16th voice, instrument, volume and balance can be set separately
-        if PY3:
-            instrument_choices = []  # instruments fill be filled when tab is selected to speed up ABC settings
-        else:
-            instrument_choices = general_midi_instruments
+        instrument_choices = []  # instruments fill be filled when tab is selected to speed up ABC settings
         controls = []
         for channel in range(1, 16+1):
             cmbMidiProgram = wx.ComboBox(self, wx.ID_ANY, choices=instrument_choices, size=(200, 26),
@@ -2700,8 +2673,7 @@ class MyVoicePage(wx.Panel):
 
         instruments = general_midi_instruments
         for channel in range(1, 16+1):
-            if PY3:
-                self.cmbMidiProgramCh_list[channel].Append(instruments)
+            self.cmbMidiProgramCh_list[channel].Append(instruments)
             try:
                 setting_name = self.midi_program_ch_list[channel-1]
                 midi_info = self.settings.get(setting_name)
@@ -3190,13 +3162,7 @@ class ColorSettingsFrame(wx.Panel):
 
         note_highlight_color = self.settings.get('note_highlight_color', default_note_highlight_color)
         note_highlight_color_label = wx.StaticText(self, wx.ID_ANY, _("Note highlight color"))
-        if PY3:
-            self.note_highlight_color_picker = wx.ColourPickerCtrl(self, wx.ID_ANY, colour=wx.Colour(note_highlight_color))
-        else:
-            r = int(note_highlight_color[1:3], 16)
-            g = int(note_highlight_color[3:5], 16)
-            b = int(note_highlight_color[5:7], 16)
-            self.note_highlight_color_picker = wx.ColourPickerCtrl(self, wx.ID_ANY, wx.Colour(r, g, b))
+        self.note_highlight_color_picker = wx.ColourPickerCtrl(self, wx.ID_ANY, colour=wx.Colour(note_highlight_color))
 
         note_highlight_follow_color = self.settings.get('note_highlight_follow_color', default_note_highlight_follow_color)
         note_highlight_follow_color_label = wx.StaticText(self, wx.ID_ANY, _("Note highlight color when follow score"))
@@ -5126,7 +5092,7 @@ class MainFrame(wx.Frame):
         lines = []
         editor = self.editor
         get_line = editor.GetLine
-        for i in xrange(editor.GetLineCount()):
+        for i in range(editor.GetLineCount()):
             line = get_line(i)
             if line.startswith('X:') or line.startswith('T:'):
                 break
@@ -5686,8 +5652,6 @@ class MainFrame(wx.Frame):
             finally:
                 dlg.Destroy() # 1.3.6.3 [JWDJ] 2015-04-21 always clean up dialog window
 
-        if not PY3:
-            filepath = filepath.encode('utf-8')
         if convert_func(tune, filepath):
             execmessages = execmessages + u'creating '+ filepath + u'\n'
             # 1.3.6 [SS] 2014-12-08
@@ -5722,7 +5686,7 @@ class MainFrame(wx.Frame):
             if only_selected:
                 tunes = self.GetSelectedTunes()
             else:
-                tunes = [self.GetTune(i) for i in xrange(self.tune_list.GetItemCount())]
+                tunes = [self.GetTune(i) for i in range(self.tune_list.GetItemCount())]
 
         if len(tunes) == 0:
             return
@@ -6209,30 +6173,23 @@ class MainFrame(wx.Frame):
         else:
             f = open(self.current_file, 'wb')
             s = self.editor.GetText()
-            if PY3 or type(s) is unicode:
-                if PY3:
-                    encoding = 'utf-8'
-                else:
-                    encoding = get_encoding_abc(s)
-                try:
-                    s.encode(encoding, 'strict')
-                except UnicodeEncodeError as e: # 1.3.6.2 [JWdJ] 2015-02
-                    sample_letters = s[e.start:e.end][:30]
-                    modal_result = wx.MessageBox(_("This document contains characters (eg. %(ABC)s) that cannot be represented using the current character encoding (%(encoding)s). "
-                                                   "Do you want to switch to using UTF-8 as your character encoding (recommended)? "
-                                                   "(choosing No may cause some of these characters to be replaced by '?' when they are saved)") %
-                                                   {'ABC': sample_letters, 'encoding': encoding},
-                                                 _('Switch to UTF-8 encoding?'), wx.ICON_QUESTION | wx.YES | wx.NO)
-                    if modal_result == wx.YES:
-                        s = os.linesep.join(('I:abc-charset utf-8', s))
-                        self.editor.BeginUndoAction()
-                        self.editor.SetText(s)
-                        self.editor.EndUndoAction()
-                        encoding = 'utf-8'
+            encoding = 'utf-8'
+            try:
+                s.encode(encoding, 'strict')
+            except UnicodeEncodeError as e: # 1.3.6.2 [JWdJ] 2015-02
+                sample_letters = s[e.start:e.end][:30]
+                modal_result = wx.MessageBox(_("This document contains characters (eg. %(ABC)s) that cannot be represented using the current character encoding (%(encoding)s). "
+                                               "Do you want to switch to using UTF-8 as your character encoding (recommended)? "
+                                               "(choosing No may cause some of these characters to be replaced by '?' when they are saved)") %
+                                               {'ABC': sample_letters, 'encoding': encoding},
+                                             _('Switch to UTF-8 encoding?'), wx.ICON_QUESTION | wx.YES | wx.NO)
+                if modal_result == wx.YES:
+                    s = os.linesep.join(('I:abc-charset utf-8', s))
+                    self.editor.BeginUndoAction()
+                    self.editor.SetText(s)
+                    self.editor.EndUndoAction()
 
-                s = s.encode(encoding, 'replace')
-
-            f.write(s)
+            f.write(s.encode(encoding, 'replace'))
             f.close()
             self.add_recent_file(self.current_file)
             self.editor.SetSavePoint()
@@ -7244,7 +7201,7 @@ class MainFrame(wx.Frame):
         if found_index == -1:
             tune_list.DeselectAll()
         else:
-            index = next((i for i in xrange(tune_list.GetItemCount()) if get_item_data(i) == found_index), -1)  # list could be sorted
+            index = next((i for i in range(tune_list.GetItemCount()) if get_item_data(i) == found_index), -1)  # list could be sorted
             if index != -1:
                 if index == tune_list.GetFirstSelected():
                     self.ScrollMusicPaneToMatchEditor(select_closest_page=self.mni_auto_refresh.IsChecked())
@@ -7266,7 +7223,7 @@ class MainFrame(wx.Frame):
         xNum = 0
         editor = self.editor
         get_line = editor.GetLine
-        for line_no in xrange(editor.GetLineCount()):
+        for line_no in range(editor.GetLineCount()):
             m = tune_index_re.match(get_line(line_no))
             if m:
                 xNum = max(xNum, int(m.group(1)))
@@ -7319,7 +7276,7 @@ class MainFrame(wx.Frame):
         cur_pos = editor.GetCurrentPos()
         in_music_code = self.position_is_music_code(cur_pos)
 
-        c = unichr(evt.GetUnicodeKey())
+        c = chr(evt.GetUnicodeKey())
         p1, p2 = editor.GetSelection()
         no_selection = p1 == p2
 
@@ -8301,7 +8258,7 @@ class MainFrame(wx.Frame):
             # 1.3.6.4 [SS] 2015-09-07
             getall = False
             get_line = self.editor.GetLine
-            for i in xrange(self.editor.GetLineCount()):
+            for i in range(self.editor.GetLineCount()):
                 line = get_line(i)
                 if line.startswith('X:') or line.startswith('T:'):
                     break
@@ -8489,7 +8446,7 @@ class MainFrame(wx.Frame):
         tunes = []
         tunes_append = tunes.append
         n = editor.GetLineCount()
-        for i in xrange(n):
+        for i in range(n):
             p = pos_from_line(i)
             try:
                 t = get_text_range(p, p+2)
@@ -8635,7 +8592,7 @@ class MainFrame(wx.Frame):
                     abc_code = change_texts_into_chords(abc_code)
                 # 1.3.6.2 [JWdJ] 2015-02
                 except NWCConversionException as e:
-                    dlg = wx.MessageDialog(self, unicode(e), _('nwc2xml error'), wx.OK | wx.CANCEL)
+                    dlg = wx.MessageDialog(self, str(e), _('nwc2xml error'), wx.OK | wx.CANCEL)
                     result = dlg.ShowModal()
                     dlg.Destroy()
                     if result == wx.ID_OK:

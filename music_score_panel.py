@@ -1,8 +1,6 @@
 import wx
 import traceback
-import sys
 from wxhelper import wx_cursor, wx_colour
-PY3 = sys.version_info.major > 2
 WX4 = wx.version().startswith('4')
 
 class MusicScorePanel(wx.ScrolledWindow):

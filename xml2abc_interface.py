@@ -5,29 +5,20 @@ import xml2abc
 import abc2xml
 from collections import namedtuple
 import xml.etree.ElementTree as E
-import sys
-PY3 = sys.version_info.major > 2
 
 class StringFile(object):
     def __init__(self):
         self.parts = []
     def write(self, s):
-        if PY3:
-            if type (s) is bytes:
-                s = s.decode ('utf-8', 'replace')
-        else:
-            s = unicode(s, 'utf-8')
+        if type (s) is bytes:
+            s = s.decode ('utf-8', 'replace')
         self.parts.append(s)
     def getvalue(self):
         return u''.join(self.parts)
 
 def info (info_string, message, warn=1):
-    if PY3:
-        if type (message) is bytes:
-            message = message.decode ('latin-1', 'replace')
-    else:
-        if type (message) is str:
-            message = message.decode ('latin-1', 'replace')
+    if type (message) is bytes:
+        message = message.decode ('latin-1', 'replace')
     message = (warn and u'-- ' or u'') + message + u'\n'  # warnings prepended with --
     info_string.append (message)
 

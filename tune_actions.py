@@ -1,27 +1,16 @@
 from __future__ import unicode_literals
 import re
 import os
-import sys
 import traceback
-
-PY3 = sys.version_info.major > 2
 
 from collections import namedtuple
 from wx import GetTranslation as _
 from tune_elements import *
-try:
-    from html import escape  # py3
-except ImportError:
-    from cgi import escape  # py2
+from html import escape
 
-try:
-    from urllib.parse import urlparse, urlencode, urlunparse, parse_qsl, quote # py3
-    from urllib.request import urlopen, Request, urlretrieve
-    from urllib.error import HTTPError, URLError
-except ImportError:
-    from urlparse import urlparse, urlunparse, parse_qsl # py2
-    from urllib import urlencode, urlretrieve, quote
-    from urllib2 import urlopen, Request, HTTPError, URLError
+from urllib.parse import urlparse, urlencode, urlunparse, parse_qsl, quote
+from urllib.request import urlopen, Request, urlretrieve
+from urllib.error import HTTPError, URLError
 
 
 from fractions import Fraction
@@ -29,12 +18,6 @@ from aligner import get_bar_length
 from generalmidi import general_midi_instruments
 from abc_tune import AbcTune, note_to_number, number_to_note
 from abc_character_encoding import unicode_text_to_abc
-
-if PY3:
-    basestring = str
-    def unicode(value):
-        return value
-
 
 UrlTuple = namedtuple('UrlTuple', 'url content')
 
@@ -144,7 +127,7 @@ class AbcAction(object):
         else:
             for param in list(params):
                 value = params[param]
-                if isinstance(value, basestring):
+                if isinstance(value, str):
                     params[param] = value.encode('utf-8')  # urlencode only accepts ascii
             return '{0}?{1}'.format(self.name, urlencode(params))
 
@@ -271,7 +254,7 @@ class ValueChangeAction(AbcAction):
             if isinstance(value, ValueDescription):
                 if not value.common:
                     return False
-            elif not isinstance(value, basestring) and hasattr(value, '__iter__'):
+            elif not isinstance(value, str) and hasattr(value, '__iter__'):
                 if not self.contains_only_common(value):
                     return False
         return True

@@ -30,9 +30,7 @@ from math import hypot, radians, sqrt, pi
 import traceback
 from datetime import datetime
 from wxhelper import wx_colour, wx_bitmap
-import sys
-PY3 = sys.version_info.major > 2
-WX4 = wx.version().startswith('4')
+WX4 =wx.version().startswith('4')
 WX41 = WX4 and not wx.version().startswith('4.0')
 
 # 1.3.6.2 [JWdJ] 2015-02-12 tags evaluated only once

@@ -11,7 +11,6 @@ import wx
 import wx.media
 import time
 import sys
-PY3 = sys.version_info.major > 2
 from midiplayer import MidiPlayer
 from mplay.smf_easyabc import read, play, fileinfo, songinfo, beatinfo, lyrics, chordinfo, \
     setsong, channelinfo, setchannel, families, instruments, songposition

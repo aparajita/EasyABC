@@ -14,14 +14,8 @@ import time
 from ctypes import c_int, c_uint, c_double, c_float, c_char_p, c_wchar_p, c_void_p, byref, CDLL
 # from ctypes.util import find_library
 
-import sys
-PY3 = sys.version_info.major > 2
-if PY3:
-    def b(s):
-        return s.encode("latin-1")
-else:
-    def b(s):
-        return s
+def b(s):
+    return s.encode("latin-1")
 
 import os
 import platform

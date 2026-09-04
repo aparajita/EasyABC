@@ -2,29 +2,17 @@ from __future__ import unicode_literals
 import re
 import os
 import io
-import sys
-PY3 = sys.version_info.major > 2
 
-try:
-    from urllib.parse import quote # py3
-    from urllib.request import urlopen
-    from urllib.error import HTTPError, URLError
-except ImportError: # py2
-    from urllib import quote
-    from urllib2 import urlopen, HTTPError, URLError
+from urllib.parse import quote
+from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
 
 import logging
 from collections import namedtuple
 from wx import GetTranslation as _
-try:
-    from html import escape  # py3
-except ImportError:
-    from cgi import escape  # py2
+from html import escape
 
 from abc_character_encoding import abc_text_to_unicode
-
-if PY3:
-    unichr = chr
 
 # this file contains many regular expression patterns
 # for understanding these regular expressions:
@@ -107,10 +95,7 @@ name_to_display_text = {
 
 def enum(*sequential, **named):
     enums = dict(zip(sequential, range(len(sequential))), **named)
-    if PY3:
-        return type('Enum', (), enums)
-    else:
-        return type(b'Enum', (), enums)
+    return type('Enum', (), enums)
 
 TuneScope = enum('FullText', 'SelectedText', 'SelectedLines', 'TuneHeader', 'TuneBody', 'Tune', 'TuneUpToSelection', 'BodyUpToSelection', 'BodyAfterSelection', 'LineUpToSelection', 'FileHeader', 'PreviousLine', 'MatchText', 'InnerText', 'PreviousCharacter', 'NextCharacter')
 TuneScopeInfo = namedtuple('TuneScopeInfo', 'text start stop encoded_text')
@@ -1097,7 +1082,7 @@ class AbcStructure(object):
             AbcStructure.from_to_directive_re = re.compile(r'(%%\w+)\.\.\.(%%\w+)')
             AbcStructure.abc_field_re = re.compile(r'[A-Za-z]:')
 
-        reference_content = reference_content.replace(unichr(150), '-')
+        reference_content = reference_content.replace(chr(150), '-')
         reference_content = replace_text(reference_content, AbcStructure.replace_regexes)
 
         lines = reference_content.splitlines()

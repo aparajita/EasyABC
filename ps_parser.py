@@ -21,7 +21,7 @@ from math import sin, cos
 import codecs
 from datetime import datetime
 from collections import deque
-import cPickle as pickle
+import pickle
 import locale
 import weakref
 

@@ -1,12 +1,7 @@
 #!/usr/bin/python
 
 import re
-import sys
-PY3 = sys.version_info.major >= 3
-try:
-    from html import escape  # py3
-except ImportError:
-    from cgi import escape  # py2
+from html import escape
 import codecs
 utf8_byte_order_mark = codecs.BOM_UTF8
 
@@ -35,47 +30,20 @@ abc_to_unicode_char = dict((b, a) for (a, b) in unicode_char_to_abc.items())
 abc_to_unicode_char_re = re.compile(u'|'.join(re.escape(c) for c in abc_to_unicode_char))
 
 
-def ensure_unicode_py2(text):
-    if not isinstance(text, unicode):
-        return text.decode('utf-8')
-    return text
-
-def ensure_unicode_py3(text):
+def ensure_unicode(text):
     if isinstance(text, bytes):
         return text.decode('utf-8')
     return text
 
-if PY3:
-    ensure_unicode = ensure_unicode_py3
-else:
-    ensure_unicode = ensure_unicode_py2
-
-def unicode_escape_to_char_py2(value):
-    return unicode(str(value), 'unicode-escape')
-
-def unicode_escape_to_char_py3(value):
+def unicode_escape_to_char(value):
     return bytes(value, 'utf-8').decode('unicode-escape')
 
-def abc_text_to_unicode_py2(text):
-    result = ensure_unicode(text)
-    if result:
-        result = abc_to_unicode_char_re.sub(lambda m: abc_to_unicode_char[m.group(0)], result)
-        result = unicode16_re.sub(lambda m: m.group(0).decode('unicode-escape'), result)
-    return result
-
-def abc_text_to_unicode_py3(text):
+def abc_text_to_unicode(text):
     result = ensure_unicode(text)
     if result:
         result = abc_to_unicode_char_re.sub(lambda m: abc_to_unicode_char[m.group(0)], result)
         result = unicode16_re.sub(lambda m: bytes(m.group(0), 'ascii').decode('unicode-escape'), result)
     return result
-
-if PY3:
-    unicode_escape_to_char = unicode_escape_to_char_py3
-    abc_text_to_unicode = abc_text_to_unicode_py3
-else:
-    unicode_escape_to_char = unicode_escape_to_char_py2
-    abc_text_to_unicode = abc_text_to_unicode_py2
 
 def unicode_text_to_abc(text):
     result = ensure_unicode(text)
@@ -492,9 +460,7 @@ def get_encoding_abc(abc_as_bytes, default_encoding = None):
     file_header = abc_as_bytes[:1024]
     match = abc_charset_re.search(file_header)
     if match:
-        encoding = match.group('encoding')
-        if PY3:
-            encoding = encoding.decode()
+        encoding = match.group('encoding').decode()
 
         if encoding != 'utf-8':
             # normalize a bit

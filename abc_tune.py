@@ -3,10 +3,6 @@ from fractions import Fraction
 from abc_character_encoding import abc_text_to_unicode, decode_abc
 from collections import defaultdict
 import re
-import sys
-PY3 = sys.version_info.major >= 3
-if PY3:
-    unicode = str
 
 field_pattern = r'[A-Za-z\+]:'
 meter_pattern = r'M:\s*(?:(\d+)/(\d+)|(C\|?))'
@@ -148,7 +144,7 @@ class AbcTune(object):
         if self.__abc_per_voice is None:
             if self.tune_body_start_line_index:
                 abc_body = '\n'.join(self.tune_body)
-                voices = defaultdict(unicode)
+                voices = defaultdict(str)
                 last_voice_id = ''
                 start_index = 0
                 for m in voice_re.finditer(abc_body):

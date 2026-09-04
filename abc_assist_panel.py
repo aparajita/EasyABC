@@ -5,10 +5,7 @@ import wx
 import wx.html
 import webbrowser
 
-try:
-    from urllib.parse import parse_qsl  # py3
-except ImportError:
-    from urlparse import parse_qsl  # py2
+from urllib.parse import parse_qsl
 
 
 class AbcAssistControl(object):

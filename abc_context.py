@@ -1,10 +1,6 @@
 from tune_elements import *
 from abc_character_encoding import ensure_unicode, unicode_text_to_abc
 import wx
-import sys
-PY3 = sys.version_info.major > 2
-if PY3:
-    xrange = range
 
 
 class AbcContext(object):
@@ -429,7 +425,7 @@ class AbcContext(object):
         editor = self._editor
         get_line = editor.GetLine
         last_index = 0
-        for line_no in xrange(editor.GetLineCount()):
+        for line_no in range(editor.GetLineCount()):
             m = tune_match(get_line(line_no))
             if m:
                 last_index = max(last_index, int(m.group(1)))
