@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=latin-1
-'''
+"""
 Copyright (C) 2012-2018: Willem G. Vree
 Contributions: Nils Liberg, Nicolas Froment, Norman Schmidt, Reinier Maliepaard, Martin Tarenskeen,
                Paul Villiger, Alexander Scheutzow, Herbert Schneider, David Randolph, Michael Strasser
@@ -10,8 +10,8 @@ Lesser GNU General Public License as published by the Free Software Foundation;
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See the Lesser GNU General Public License for more details. <http://www.gnu.org/licenses/lgpl.html>.
-'''
+See the Lesser GNU General Public License for more details. <https://www.gnu.org/licenses/lgpl.html>.
+"""
 
 from functools import reduce
 from pyparsing import Word, OneOrMore, Optional, Literal, NotAny, MatchFirst
