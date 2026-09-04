@@ -43,7 +43,7 @@ if sys.platform == "darwin":
         #                 'excludes': ['Tkinter','tcl','tk','_ssl', 'email'],
                          'excludes': ['Tkinter','tcl','tk','_ssl', 'pygame', 'pygame.pypm'],
         #                 'includes': ['mechanize', 'urllib', 'socket', 'pygame.pypm' ],
-                         'includes': ['mechanize', 'urllib', 'socket' ],
+                         'includes': ['urllib', 'socket' ],
                          'packages': ['wx'],
                          'plist': {
                                    'CFBundleDocumentTypes': [{
@@ -54,7 +54,7 @@ if sys.platform == "darwin":
                                    }
                          }
     data_files = [('.', ['reference.txt', 'gpl-license.txt']),
-                  ('bin', ['bin/abc2midi', 'bin/abcm2ps', 'bin/abc2abc', 'bin/nwc2xml', 'bin/midi2abc']),
+                  ('bin', ['bin/abc2midi', 'bin/abcm2ps', 'bin/abc2abc', 'bin/midi2abc']),
                   ('img', glob.glob(os.path.join('img', '*.*'))),
                   ('sound', glob.glob(os.path.join('sound', '*.*'))),
                   ('locale', []),

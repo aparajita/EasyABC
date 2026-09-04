@@ -41,6 +41,30 @@ An open source ABC editor for Windows, OSX and Linux. It is published under the 
 - FluidSynth for playing using SoundFonts
 - Many thanks to the translators: Valerio Pelliccioni (italian), Bendix Rødgaard (danish), Frédéric Aupépin (french). Universal binaries of abcm2ps and abc2midi for OSX are available thanks to Chuck Boody.
 
+## Building
+
+Building is currently only supported on macOS, the only platform this project targets.
+
+Requirements:
+
+- [Homebrew](https://brew.sh)
+
+Run:
+
+```
+./build.sh
+```
+
+This installs `abcm2ps`, `abcmidi`, `uv`, and Homebrew's `python@3.14` as needed, creates a
+`.venv`, and produces `dist/EasyABC.app`.
+
+Pass `--clean` to remove `dist`, `build`, `.venv`, and the `bin/` binaries fetched from
+Homebrew before building:
+
+```
+./build.sh --clean
+```
+
 ## Links
 
 - [abcnotation.com](https://abcnotation.com)

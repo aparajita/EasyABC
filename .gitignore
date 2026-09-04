@@ -21,7 +21,7 @@ $RECYCLE.BIN/
 # Operating System Files
 # =========================
 
-# OSX
+# macOS
 # =========================
 
 .DS_Store
@@ -63,3 +63,12 @@ dist
 .vscode/settings.json
 .vscode/launch.json
 test.py
+
+# Binaries fetched by build.sh via Homebrew
+/bin/abcm2ps
+/bin/abc2abc
+/bin/abc2midi
+/bin/midi2abc
+
+# IntelliJ IDEs
+/.idea
