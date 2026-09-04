@@ -152,49 +152,26 @@ class Abcm2psException(Exception): pass
 class NWCConversionException(Exception): pass
 
 from abc_tune import *
-
-dialog_background_colour = wx.Colour(245, 244, 235)
-default_note_highlight_color = '#FF7F3F'
-default_note_highlight_follow_color = '#CC00FF'
-#default_style_color = {
-#    'style_default_color':'#000000',
-#    'style_chord_color':'#000000',
-#    'style_comment_color':'#AAAAAA',
-#    'style_specialcomment_color':'#888888',
-#    'style_bar_color':'#000099',
-#    'style_field_color':'#8C7853',
-#    'style_fieldvalue_color':'#8C7853',
-#    'style_embeddedfield_color':'#8C7853',
-#    'style_embeddedfieldvalue_color':'#8C7853',
-#    'style_fieldindex_color':'#000000',
-#    'style_string_color':'#7F7F7F',
-#    'style_lyrics_color':'#7F7F7F',
-#    'style_grace_color':'#5a3700',
-#    'style_ornament_color':'#777799',
-#    'style_ornamentplus_color':'#888888',
-#    'style_ornamentexcl_color':'#888888'
-#}
-default_style_color = {
-    'style_default_color':'#131415',
-    'style_chord_color':'#131415',
-    'style_comment_color':'#656E77',
-    'style_specialcomment_color':'#803378',
-#    'style_bar_color':'#535A60',
-    'style_bar_color':'#0000CC',
-    'style_field_color':'#B75501',
-    'style_fieldvalue_color':'#B75501',
-    'style_embeddedfield_color':'#B75501',
-    'style_embeddedfieldvalue_color':'#B75501',
-    'style_fieldindex_color':'#000000',
-    'style_string_color':'#2F6F44',
-    'style_lyrics_color':'#51774e',
-    'style_grace_color':'#5A3700',
-    'style_ornament_color':'#015692',
-    'style_ornamentplus_color':'#015692',
-    'style_ornamentexcl_color':'#015692'
-}
+from appearance import current_appearance, rebuild_appearance, PRINT_INK
+from appearance import DEFAULT_NOTE_HIGHLIGHT as default_note_highlight_color
+from appearance import DEFAULT_NOTE_HIGHLIGHT_FOLLOW as default_note_highlight_follow_color
 
 control_margin = 6
+
+
+def apply_editor_appearance(text_ctrl, appearance, style_color, face, size):
+    """Give a Scintilla control the base colours of the current appearance.
+
+    ``style_color`` maps a palette key to the colour to use for it.
+    The default style must carry the background before ``StyleClearAll`` copies it
+    into every other style, so the caller adds its own styles after this returns.
+    """
+    background = appearance.html(appearance.editor_background)
+    text_ctrl.StyleSetSpec(stc.STC_STYLE_DEFAULT, "fore:%s,back:%s,face:%s,size:%d" % (style_color('style_default_color'), background, face, size))
+    text_ctrl.StyleClearAll()
+    text_ctrl.StyleSetSpec(stc.STC_STYLE_LINENUMBER, "fore:%s,back:%s" % (appearance.html(appearance.text), appearance.html(appearance.window_background)))
+    text_ctrl.SetCaretForeground(appearance.text)
+    text_ctrl.SetSelBackground(True, wx.Colour(style_color('style_selection_color')))
 default_midi_volume = 96
 default_midi_pan = 64
 default_midi_instrument = 0
@@ -622,35 +599,6 @@ def change_abc_tempo(abc_code, tempo_multiplier):
         abc_code = os.linesep.join(lines)
     return abc_code
 
-def add_table_of_contents_to_postscript_file(filepath):
-    def to_ps_string(s):  # handle unicode strings
-        if any(c for c in s if ord(c) > 127):
-            return '<FEFF%s>' % ''.join('%.4x' % ord(c) for c in s)   # encode unicode
-        else:
-            return '(%s)' % s.replace('(', r'\(').replace(')', r'\)') # escape any parenthesis
-    lines = list(codecs.open(filepath, 'rU', 'utf-8'))
-    for line in lines:
-        if 'pdfmark' in line:
-            return   # pdfmarks have already been added
-    new_lines = []
-    new_tune_state = False
-    tunes = []
-    for line in lines:
-        new_lines.append(line)
-        m = re.match(r'% --- (\d+) \((.*?)\) ---', line)
-        if m:
-            new_tune_state = True
-            tune_index, tune_title = m.group(1), m.group(2)
-            tunes.append((tune_index, tune_title))
-        if new_tune_state and (line.rstrip().endswith('showc') or
-                               line.rstrip().endswith('showr') or
-                               line.rstrip().endswith('show')):
-            ps_title = to_ps_string(decode_abc(tune_title))
-            new_lines.append('[ /Dest /NamedDest%s /View [ /XYZ null null null ] /DEST pdfmark' % tune_index)
-            new_lines.append('[ /Action /GoTo /Dest /NamedDest%s /Title %s /OUT pdfmark' % (tune_index, ps_title))
-            new_tune_state = False  # now this tune has been handled, wait for next one....
-    codecs.open(filepath, 'wb', 'utf-8').write(os.linesep.join(new_lines))
-
 def sort_abc_tunes(abc_code, sort_fields, keep_free_text=True):
     lines = text_to_lines(abc_code)
     tunes = []
@@ -935,7 +883,7 @@ def get_midi_structure_as_text(midi2abc_path, midi_file):
     return result
 
 # p09 2014-10-14 2014-12-17 2015-01-28 [SS]
-def AbcToPDF(settings, abc_code, header, cache_dir, extra_params='', abcm2ps_path=None, gs_path=None, abcm2ps_format_path=None, generate_toc=False):
+def AbcToPDF(settings, abc_code, header, cache_dir, extra_params='', abcm2ps_path=None, gs_path=None, abcm2ps_format_path=None):
     global execmessages, visible_abc_code # 1.3.6.1 [SS] 2015-01-13
     pdf_file = os.path.abspath(os.path.join(cache_dir, 'temp.pdf'))
     # 1.3.6 [SS] 2014-12-17
@@ -943,9 +891,6 @@ def AbcToPDF(settings, abc_code, header, cache_dir, extra_params='', abcm2ps_pat
     (ps_file, error) = AbcToPS(abc_code, cache_dir, extra_params, abcm2ps_path, abcm2ps_format_path)
     if not ps_file:
         return None
-
-    #if generate_toc:
-    #    add_table_of_contents_to_postscript_file(ps_file)
 
     gs_path = ensure_unicode(gs_path)
 
@@ -1389,9 +1334,8 @@ def process_abc_for_midi(abc_code, header, cache_dir, settings, tempo_multiplier
     #Write temporary abc_file (for debug purpose)
     #temp_abc_file =  os.path.abspath(os.path.join(cache_dir, 'temp_%s.abc' % hash)) 1.3.6 [SS] 2014-11-13
     temp_abc_file = os.path.abspath(os.path.join(cache_dir, 'temp.abc')) # 1.3.6 [SS] 2014-11-13
-    f = codecs.open(temp_abc_file, 'wb', 'UTF-8') #p08 patch
-    f.write(abc_code)
-    f.close()
+    with open(temp_abc_file, 'w', encoding='utf-8', newline='') as f:
+        f.write(abc_code)
 
     return abc_code
 
@@ -1542,7 +1486,7 @@ class MusicPrintout(wx.Printout):
         #new versions of abcm2ps adds a suffix 'in' to width and height
         #new versions of abcm2ps adds a suffix 'px' to width and height
         # 1.3.7.3 [JWDJ] use svg renderer to calculate width and height
-        renderer = SvgRenderer(self.can_draw_sharps_and_flats, highlight_color='#000000')
+        renderer = SvgRenderer(self.can_draw_sharps_and_flats, highlight_color=PRINT_INK)
         try:
             page = renderer.svg_to_page(svg)
 
@@ -1947,7 +1891,6 @@ class IncipitsFrame(wx.Dialog):
     def __init__(self, parent, settings):
         self.settings = settings
         wx.Dialog.__init__(self, parent, wx.ID_ANY, _('Generate incipits file...'), wx.DefaultPosition, wx.Size(530, 260))
-        self.SetBackgroundColour(dialog_background_colour)
         border = control_margin
         sizer = box1 = wx.GridBagSizer()
         lb1 = wx.StaticText(self, wx.ID_ANY, _('Number of bars to extract:'))
@@ -2077,7 +2020,6 @@ class AbcFileSettingsFrame(wx.Panel):
         self.settings = settings
         self.statusbar = statusbar
         self.mc = mc
-        self.SetBackgroundColour(dialog_background_colour)
         border = control_margin
 
         PathEntry = namedtuple('PathEntry', 'name display_name tooltip add_default wildcard on_change')
@@ -2295,7 +2237,6 @@ class AbcFileSettingsFrame(wx.Panel):
 class MyChordPlayPage (wx.Panel):
     def __init__(self, parent, settings):
         wx.Panel.__init__(self, parent)
-        self.SetBackgroundColour(dialog_background_colour) # 1.3.6.3 [JWDJ] 2014-04-28 same background for all tabs
         gridsizer = wx.FlexGridSizer(20, 4, 2, 2)
         # midi_box to set default instrument for playback
         midi_box = wx.GridBagSizer()
@@ -2553,7 +2494,6 @@ class MyVoicePage(wx.Panel):
     def __init__(self, parent, settings):
         wx.Panel.__init__(self, parent)
         self.settings = settings
-        self.SetBackgroundColour(dialog_background_colour)
         border = control_margin
         channel = 1
         self.controls_initialized = False
@@ -2734,7 +2674,6 @@ class MidiSettingsFrame(wx.Dialog):
     def __init__(self, parent, settings):
         wx.Dialog.__init__(self, parent, wx.ID_ANY, _('Midi device settings'), wx.DefaultPosition, wx.Size(130, 80))
         self.settings = settings
-        self.SetBackgroundColour(dialog_background_colour)
         border = control_margin
         sizer = wx.GridBagSizer(0, 0)
         sizer.Add(wx.StaticText(self, wx.ID_ANY, _('Input device')), wx.GBPosition(0, 0), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=border)
@@ -2821,7 +2760,6 @@ class MyAbcm2psPage(wx.Panel):
         wx.Panel.__init__(self, parent)
         self.settings = settings
         self.abcsettingspage = abcsettingspage
-        self.SetBackgroundColour(dialog_background_colour)
         border = control_margin
         headingtxt = _('The options in this page controls how the music score is displayed.\n\n')
         heading = wx.StaticText(self, wx.ID_ANY, headingtxt)
@@ -3150,7 +3088,6 @@ class ColorSettingsFrame(wx.Panel):
     def __init__(self, parent, settings):
         wx.Panel.__init__(self, parent)
         self.settings = settings
-        self.SetBackgroundColour(dialog_background_colour)
         border = control_margin
 
         grid_sizer = wx.GridBagSizer()
@@ -3166,12 +3103,20 @@ class ColorSettingsFrame(wx.Panel):
         note_highlight_follow_color_label = wx.StaticText(self, wx.ID_ANY, _("Note highlight color when follow score"))
         self.note_highlight_follow_color_picker = wx.ColourPickerCtrl(self, wx.ID_ANY, colour=wx.Colour(note_highlight_follow_color))
 
+        appearance = current_appearance()
+        score_paper_label = wx.StaticText(self, wx.ID_ANY, _("Paper color of music score"))
+        self.score_paper_picker = wx.ColourPickerCtrl(self, wx.ID_ANY, colour=wx.Colour(appearance.style_color(self.settings, 'score_paper')))
+
         grid_sizer.Add(notecolors,pos=(0,0),span=(1,10), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=border)
-        
+
         grid_sizer.Add(note_highlight_color_label, pos=(1,1), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=border)
         grid_sizer.Add(self.note_highlight_color_picker, pos=(1,2), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=border)
         grid_sizer.Add(note_highlight_follow_color_label, pos=(1,4), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=border)
         grid_sizer.Add(self.note_highlight_follow_color_picker, pos=(1,5), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=border)
+        grid_sizer.Add(score_paper_label, pos=(1,7), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=border)
+        grid_sizer.Add(self.score_paper_picker, pos=(1,8), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=border)
+        self.score_paper_picker.SetToolTip(wx.ToolTip(_('Background color of the music score on screen; printing and export stay on white paper')))
+        self.score_paper_picker.Bind(wx.EVT_COLOURPICKER_CHANGED, self.OnScorePaperChanged)
 
         note_highlight_color_tooltip = _('Color of selected note')
         self.note_highlight_color_picker.SetToolTip(wx.ToolTip(note_highlight_color_tooltip))
@@ -3196,7 +3141,8 @@ class ColorSettingsFrame(wx.Panel):
             'style_ornament_color':_("Color of ornament"),
             'style_ornamentplus_color':_("Color of ornament plus"),
             'style_ornamentexcl_color':_("Color of ornament excl"),
-            'style_grace_color':_("Color of grace notes")
+            'style_grace_color':_("Color of grace notes"),
+            'style_selection_color':_("Color of selection"),
         }
         
         grid_sizer.Add(editorcolors,pos=(3,0),span=(1,10), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=border)
@@ -3204,7 +3150,7 @@ class ColorSettingsFrame(wx.Panel):
         j=1
         self.color_picker = {}
         for key, label in self.style_labels.items():
-            color = self.settings.get(key, default_style_color[key])
+            color = appearance.style_color(self.settings, key)
             color_text_label = wx.StaticText(self, wx.ID_ANY, label)
             self.color_picker[key] = wx.ColourPickerCtrl(self, wx.ID_ANY, colour=wx.Colour(color))
             grid_sizer.Add(color_text_label, pos=(i,j), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=border)
@@ -3228,41 +3174,51 @@ class ColorSettingsFrame(wx.Panel):
         self.Fit()
         self.Layout()
 
+    @property
+    def main_frame(self):
+        return self.Parent.Parent.Parent.Parent
+
+    @staticmethod
+    def picked_color(picker):
+        return picker.GetColour().GetAsString(flags=wx.C2S_HTML_SYNTAX)
+
     def OnNoteHighlightColorChanged(self, evt):
-        wxcolor = self.note_highlight_color_picker.GetColour()
-        color = wxcolor.GetAsString(flags=wx.C2S_HTML_SYNTAX)
+        color = self.picked_color(self.note_highlight_color_picker)
         self.settings['note_highlight_color'] = color
-        self.Parent.Parent.Parent.Parent.renderer.highlight_color = color
+        self.main_frame.renderer.highlight_color = color
 
     def OnNoteHighlightFollowColorChanged(self, evt):
-        wxcolor = self.note_highlight_follow_color_picker.GetColour()
-        color = wxcolor.GetAsString(flags=wx.C2S_HTML_SYNTAX)
+        color = self.picked_color(self.note_highlight_follow_color_picker)
         self.settings['note_highlight_follow_color'] = color
-        self.Parent.Parent.Parent.Parent.renderer.highlight_follow_color = color
+        self.main_frame.renderer.highlight_follow_color = color
 
     def UpdateEditor(self):
-        font_info = self.settings.get('font')
-        if font_info:
-            face, size = font_info[-1], font_info[0]
-            self.Parent.Parent.Parent.Parent.InitEditor(face, size)
-        else:
-            self.Parent.Parent.Parent.Parent.InitEditor()
+        self.main_frame.InitEditorFromSettings()
 
-    def OnFontColorChanged(self, evt, settings_key):
-        wxcolor = self.color_picker[settings_key].GetColour()
-        color = wxcolor.GetAsString(flags=wx.C2S_HTML_SYNTAX)
-        self.settings[settings_key] = color
+    def store_style_color(self, palette_key, color):
+        self.settings[current_appearance().style_settings_key(palette_key)] = color
+
+    def OnFontColorChanged(self, evt, palette_key):
+        self.store_style_color(palette_key, self.picked_color(self.color_picker[palette_key]))
         self.UpdateEditor()
-        
+
+    def OnScorePaperChanged(self, evt):
+        self.store_style_color('score_paper', self.picked_color(self.score_paper_picker))
+        self.main_frame.ApplyScorePaper()
+
     def OnRestoreDefaultColors(self, evt):
         self.settings['note_highlight_color'] = default_note_highlight_color
         self.note_highlight_color_picker.SetColour(default_note_highlight_color)
         self.settings['note_highlight_follow_color'] = default_note_highlight_follow_color
         self.note_highlight_follow_color_picker.SetColour(default_note_highlight_follow_color)
-        for key, color in default_style_color.items():
-            self.settings[key] = color
-            self.color_picker[key].SetColour(color)
+        appearance = current_appearance()
+        for key, color in appearance.style_palette.items():
+            self.store_style_color(key, color)
+            if key in self.color_picker:
+                self.color_picker[key].SetColour(color)
+        self.score_paper_picker.SetColour(appearance.style_palette['score_paper'])
         self.UpdateEditor()
+        self.main_frame.ApplyScorePaper()
 
 # 1.3.6 [SS] 2014-12-01
 # For controlling the way xml2abc and abc2xml operate
@@ -3270,7 +3226,6 @@ class MusicXmlPage(wx.Panel):
     def __init__(self, parent, settings):
         wx.Panel.__init__(self,parent)
         self.settings = settings
-        self.SetBackgroundColour(dialog_background_colour)
         border = control_margin
 
         #headingtxt = _("The settings on this page control behaviour of the functions abc2xml and xml2abc.\nYou find these functions under Files/export and import. Hovering the mouse over\none of the checkboxes will provide more explanation. Further documentation can be found\nin the Readme.txt files which come with the abc2xml.py-??.zip and xml2abc.py-??.zip\ndistributions available from the Wim Vree's web site.\n\n")
@@ -3420,7 +3375,6 @@ class MidiOptionsFrame(wx.Dialog):
     def __init__(self, parent, ID=-1, title='', key='', metre='3/4', default_len='1/16'):
         wx.Dialog.__init__(self, parent, ID, _('ABC Options'), wx.DefaultPosition, wx.Size(300, 80))
 
-        self.SetBackgroundColour(dialog_background_colour)
         border = control_margin
         sizer = wx.GridBagSizer(control_margin, control_margin)
         sizer.Add(wx.StaticText(self, wx.ID_ANY, u'K: ' + _('Key signature')), wx.GBPosition(0, 0), flag=wx.EXPAND | wx.LEFT | wx.RIGHT, border=border)
@@ -3497,7 +3451,6 @@ class ErrorFrame(wx.Dialog):
     def __init__(self, parent, error_msg):
         wx.Dialog.__init__(self, parent, wx.ID_ANY, _('Errors'), wx.DefaultPosition, wx.Size(700, 80))
         border = 10
-        self.SetBackgroundColour(dialog_background_colour)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         font_size = get_normal_fontsize() # 1.3.6.3 [JWDJ] one function to set font size
@@ -3981,6 +3934,19 @@ class SearchFilesThread(threading.Thread):
         return path, pos  # character position in file
 
 
+class PaneManager(aui.AuiManager):
+    """An AUI manager that lets the system colour event reach the managed frame.
+
+    The manager sits in the frame's event handler chain ahead of the frame, and
+    the library handler swallows the event, so the frame's own handler would
+    otherwise never run on an appearance switch.
+    """
+
+    def OnSysColourChanged(self, event):
+        super().OnSysColourChanged(event)
+        event.Skip()
+
+
 class MainFrame(wx.Frame):
     def __init__(self, parent, ID, app_dir, settings, options):
         wx.Frame.__init__(self, parent, ID, '%s - %s %s' % (program_name, _('Untitled'), 1),
@@ -4041,9 +4007,9 @@ class MainFrame(wx.Frame):
         self.statusbar = self.CreateStatusBar()
         self.SetMinSize((100, 100))
         if settings.get('live_resize', False):
-            self.manager = aui.AuiManager(self, agwFlags=aui.AUI_MGR_DEFAULT | aui.AUI_MGR_LIVE_RESIZE)
+            self.manager = PaneManager(self, agwFlags=aui.AUI_MGR_DEFAULT | aui.AUI_MGR_LIVE_RESIZE)
         else:
-            self.manager = aui.AuiManager(self)
+            self.manager = PaneManager(self)
 
         self.printData = wx.PrintData()
         self.printData.SetPrintMode(wx.PRINT_MODE_PRINTER)
@@ -4121,9 +4087,9 @@ class MainFrame(wx.Frame):
         self.editor.SetMarginType(1,stc.STC_MARGIN_NUMBER)
 
         # 1.3.6.2 [JWdJ] 2015-02
-        self.renderer = SvgRenderer(self.settings['can_draw_sharps_and_flats'], self.settings.get('note_highlight_color', default_note_highlight_color), self.settings.get('note_highlight_follow_color', default_note_highlight_follow_color))#'#FF0000')
+        self.renderer = SvgRenderer(self.settings['can_draw_sharps_and_flats'], self.settings.get('note_highlight_color', default_note_highlight_color), self.settings.get('note_highlight_follow_color', default_note_highlight_follow_color), self.score_paper_color())
         self.music_pane = MusicScorePanel(self, self.renderer)
-        self.music_pane.SetBackgroundColour((255, 255, 255))
+        self.music_pane.SetBackgroundColour(wx.Colour(self.renderer.paper_color))
         self.music_pane.OnNoteSelectionChangedDesc = self.OnNoteSelectionChangedDesc
 
         error_font_size = get_normal_fontsize() # 1.3.6.3 [JWDJ] one function to set font size
@@ -4162,13 +4128,7 @@ class MainFrame(wx.Frame):
         self.default_perspective = self.manager.SavePerspective()
 
         self.styler = ABCStyler(self.editor)
-
-        font_info = settings.get('font')
-        if font_info:
-            face, size = font_info[-1], font_info[0]
-            self.InitEditor(face, size)
-        else:
-            self.InitEditor()
+        self.InitEditorFromSettings()
 
         self.editor.SetDropTarget(MyFileDropTarget(self))
         self.tune_list.SetDropTarget(MyFileDropTarget(self))
@@ -4213,6 +4173,7 @@ class MainFrame(wx.Frame):
         self.tune_list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self.OnRightClickList, self.tune_list)
 
         self.Bind(wx.EVT_CLOSE, self.OnClose)
+        self.Bind(wx.EVT_SYS_COLOUR_CHANGED, self.OnSysColourChanged)
         self.Bind(EVT_RECORDSTOP, self.OnRecordStop)
         self.Bind(EVT_MUSIC_UPDATE_DONE, self.OnMusicUpdateDone)
         self.editor.Bind(wx.EVT_KEY_DOWN, self.OnUpdate)
@@ -4557,6 +4518,33 @@ class MainFrame(wx.Frame):
         self.save_settings()
         for frame in wx.GetApp().GetAllFrames():
             frame.load_and_apply_settings()
+
+    def OnSysColourChanged(self, evt):
+        evt.Skip()
+        rebuild_appearance()
+        self.ApplyAppearance()
+
+    def ApplyAppearance(self):
+        """Repaint everything that draws with appearance colours.
+
+        Runs on a live appearance switch, after the appearance has been rebuilt,
+        so the editor palette and score pane can follow the system.
+        """
+        self.InitEditorFromSettings()
+        self.ApplyScorePaper()
+        tune_frame = wx.FindWindowByName('abctuneframe')
+        if tune_frame is not None:
+            tune_frame.ApplyAppearance()
+
+    def score_paper_color(self):
+        return current_appearance().style_color(self.settings, 'score_paper')
+
+    def ApplyScorePaper(self):
+        """Repaint the score pane on the paper colour of the current appearance."""
+        self.renderer.paper_color = self.score_paper_color()
+        self.music_pane.SetBackgroundColour(wx.Colour(self.renderer.paper_color))
+        self.music_pane.redraw()
+        self.Refresh()
 
     def OnToggleMusicPaneMaximize(self, evt):
         pane = self.manager.GetPane('tune preview')
@@ -5194,8 +5182,7 @@ class MainFrame(wx.Frame):
                                                          self.settings.get('abcm2ps_path', ''),
                                                          self.settings.get('gs_path',''),
                                                          #self.settings.get('ps2pdf_path',''),
-                                                         self.settings.get('abcm2ps_format_path', ''),
-                                                         generate_toc = True)
+                                                         self.settings.get('abcm2ps_format_path', ''))
             if pdf_file:
                 launch_file(pdf_file)
             else:
@@ -5473,17 +5460,17 @@ class MainFrame(wx.Frame):
                                              self.settings,
                                              with_annotations=False)
         if svg_files:
-            f = codecs.open(filepath, 'wb', 'UTF-8')
-            f.write('<html xmlns="http://www.w3.org/1999/xhtml">\n')
-            f.write('<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/> </head>\n')
-            f.write('<body>\n\n')
-            for fn in svg_files:
-                svg = codecs.open(fn, 'rb', 'UTF-8').read()
-                svg = svg[svg.index('<svg'):]
-                f.write(svg)
-                f.write('\n\n')
-            f.write('</body></html>')
-            f.close()
+            with open(filepath, 'w', encoding='utf-8', newline='') as f:
+                f.write('<html xmlns="http://www.w3.org/1999/xhtml">\n')
+                f.write('<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/> </head>\n')
+                f.write('<body>\n\n')
+                for fn in svg_files:
+                    with open(fn, 'r', encoding='utf-8', newline='') as svg_file:
+                        svg = svg_file.read()
+                    svg = svg[svg.index('<svg'):]
+                    f.write(svg)
+                    f.write('\n\n')
+                f.write('</body></html>')
             return launch_file(filepath)
         return False
 
@@ -5491,20 +5478,6 @@ class MainFrame(wx.Frame):
         return re.sub(r'(?m)^%%pageheight\b', '% %%pageheight', abc)
 
     def export_interactive_html(self, tune, filepath):
-        f = codecs.open(filepath, 'wb', 'UTF-8')
-        f.write('<!DOCTYPE HTML>\n')
-        f.write('<html>\n<head>\n')
-        f.write('<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>\n')
-        f.write('<script src="http://moinejf.free.fr/js/abcweb-1.js"></script>\n')
-        f.write('<script src="http://moinejf.free.fr/js/snd-1.js"></script>\n')
-        f.write('<style type="text/css">\n')
-        f.write('svg {display:block}\n')
-        f.write('@media print{body{margin:0;padding:0;border:0}.nop{display:none}}\n')
-        f.write('</style>\n')
-        f.write('</head>\n<body>\n<script type="text/vnd.abc">\n\n\n')
-        file_header = self.comment_pageheight(tune.header)
-        f.write(file_header)
-        f.write('\n')
         abc = tune.abc
         if '%%MIDI drummap' in abc:
             abc = re.sub(r'%%MIDI drummap\s+(?P<note>\^[A-Ga-g])\s+(?P<midinote>\d+)', r'%%percmap \g<note> \g<midinote> x', abc)
@@ -5524,9 +5497,22 @@ class MainFrame(wx.Frame):
                     new_abc_lines.append('%%MIDI gchordon')
                     header_started = False
             abc = '\n'.join(new_abc_lines)
-        f.write(self.comment_pageheight(abc))
-        f.write('\n\n\n</script>\n</body>\n</html>')
-        f.close()
+
+        with open(filepath, 'w', encoding='utf-8', newline='') as f:
+            f.write('<!DOCTYPE HTML>\n')
+            f.write('<html>\n<head>\n')
+            f.write('<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>\n')
+            f.write('<script src="http://moinejf.free.fr/js/abcweb-1.js"></script>\n')
+            f.write('<script src="http://moinejf.free.fr/js/snd-1.js"></script>\n')
+            f.write('<style type="text/css">\n')
+            f.write('svg {display:block}\n')
+            f.write('@media print{body{margin:0;padding:0;border:0}.nop{display:none}}\n')
+            f.write('</style>\n')
+            f.write('</head>\n<body>\n<script type="text/vnd.abc">\n\n\n')
+            f.write(self.comment_pageheight(tune.header))
+            f.write('\n')
+            f.write(self.comment_pageheight(abc))
+            f.write('\n\n\n</script>\n</body>\n</html>')
         return launch_file(filepath)
 
     def OnExportAllHTML(self, evt):
@@ -5609,11 +5595,10 @@ class MainFrame(wx.Frame):
         self.export_tunes(_('ABC file'), '.abc', self.export_abc, only_selected=True, single_file=True)
 
     def export_abc(self, tune, filepath):
-        f = codecs.open(filepath, 'wb', 'utf-8')
-        f.write(tune.header)
-        f.write(os.linesep)
-        f.write(tune.abc)
-        f.close()
+        with open(filepath, 'w', encoding='utf-8', newline='') as f:
+            f.write(tune.header)
+            f.write(os.linesep)
+            f.write(tune.abc)
         frame = self.OnNew()
         frame.load(filepath.decode('utf-8'))
         return True
@@ -6365,6 +6350,7 @@ class MainFrame(wx.Frame):
         self.mni_reduced_margins = append_menu_item(view_menu, _("&Use reduced margins when displaying tunes on screen"), "", self.OnReducedMargins, kind=wx.ITEM_CHECK)
         append_menu_item(view_menu, _("&Change editor font..."), "", self.OnChangeFont)
         append_menu_item(view_menu, _("&Use default editor font"), "", self.OnUseDefaultFont)
+        append_menu_item(view_menu, _("&Actual editor font size") + "\tCtrl+1", "", self.OnActualFontSize)
         view_menu.AppendSeparator()
         append_menu_item(view_menu, _("&Reset window layout to default"), "", self.OnResetView)
         view_menu.AppendSeparator()
@@ -6859,6 +6845,9 @@ class MainFrame(wx.Frame):
             for frame in wx.GetApp().GetAllFrames():
                 frame.load_and_apply_settings()
                 frame.InitEditor()
+
+    def OnActualFontSize(self, evt):
+        self.editor.SetZoom(0)
 
     def closestNoteData(self, page, row_offset, line, col):
         """Find the NoteData of the closest note to cursor position
@@ -8467,10 +8456,16 @@ class MainFrame(wx.Frame):
             lines.append(line)
         return ''.join(lines)
 
+    def InitEditorFromSettings(self):
+        font_info = self.settings.get('font')
+        if font_info:
+            self.InitEditor(font_info[-1], font_info[0])
+        else:
+            self.InitEditor()
+
     def InitEditor(self, font_face=None, font_size=None):
         editor = self.editor
         editor.ClearDocumentStyle()
-        editor.StyleClearAll()
         editor.SetLexer(stc.STC_LEX_CONTAINER)
         editor.SetProperty("fold", "0")
         editor.SetUseTabs(False)
@@ -8500,30 +8495,30 @@ class MainFrame(wx.Frame):
         editor.SetFont(wx.Font(size, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, faceName=font))
 
         editor.SetProperty("fold", "0")
-        set_style = editor.StyleSetSpec
-        set_style(self.styler.STYLE_DEFAULT, "fore:%s,face:%s,size:%d" % (self.settings.get('style_default_color',default_style_color['style_default_color']), font, size))
-        set_style(self.styler.STYLE_CHORD, "fore:%s,face:%s,size:%d" % (self.settings.get('style_chord_color',default_style_color['style_chord_color']), font, size))
-        # Comments
-        set_style(self.styler.STYLE_COMMENT_NORMAL, "fore:%s,face:%s,italic,size:%d" % (self.settings.get('style_comment_color',default_style_color['style_comment_color']), font, size))
-        set_style(self.styler.STYLE_COMMENT_SPECIAL, "fore:%s,face:%s,italic,size:%d" % (self.settings.get('style_specialcomment_color',default_style_color['style_specialcomment_color']), font, size))
-        # Bar
-        set_style(self.styler.STYLE_BAR, "fore:%s,face:%s,bold,size:%d" % (self.settings.get('style_bar_color',default_style_color['style_bar_color']), font, size))
-        # Field
-        set_style(self.styler.STYLE_FIELD,                "fore:%s,face:%s,bold,size:%d" % (self.settings.get('style_field_color',default_style_color['style_field_color']), font, size))
-        set_style(self.styler.STYLE_FIELD_VALUE,          "fore:%s,face:%s,italic,size:%d" % (self.settings.get('style_fieldvalue_color',default_style_color['style_fieldvalue_color']), font, size))
-        set_style(self.styler.STYLE_EMBEDDED_FIELD,       "fore:%s,face:%s,bold,size:%d" % (self.settings.get('style_embeddedfield_color',default_style_color['style_embeddedfield_color']), font, size))
-        set_style(self.styler.STYLE_EMBEDDED_FIELD_VALUE, "fore:%s,face:%s,italic,size:%d" % (self.settings.get('style_embeddedfieldvalue_color',default_style_color['style_embeddedfieldvalue_color']), font, size))
-        set_style(self.styler.STYLE_FIELD_INDEX,          "fore:%s,face:%s,bold,underline,size:%d" % (self.settings.get('style_fieldindex_color',default_style_color['style_fieldindex_color']), font, size))
-        # Single quoted string
-        set_style(self.styler.STYLE_STRING, "fore:%s,face:%s,italic,size:%d" % (self.settings.get('style_string_color',default_style_color['style_string_color']), font, size))
-        # Lyrics
-        set_style(self.styler.STYLE_LYRICS, "fore:%s,face:%s,italic,size:%d" % (self.settings.get('style_lyrics_color',default_style_color['style_lyrics_color']), font, size))
+        appearance = current_appearance()
+        style_color = lambda key: appearance.style_color(self.settings, key)
+        apply_editor_appearance(editor, appearance, style_color, font, size)
 
-        set_style(self.styler.STYLE_GRACE, "fore:%s,face:%s,italic,size:%d" % (self.settings.get('style_grace_color',default_style_color['style_grace_color']), font, size))
+        def set_style(style_id, palette_key, attributes=''):
+            editor.StyleSetSpec(style_id, "fore:%s,face:%s,%ssize:%d" % (style_color(palette_key), font, attributes, size))
 
-        set_style(self.styler.STYLE_ORNAMENT, "fore:%s,face:%s,bold,size:%d" % (self.settings.get('style_ornament_color',default_style_color['style_ornament_color']), font, size))
-        set_style(self.styler.STYLE_ORNAMENT_PLUS, "fore:%s,face:%s,size:%d" % (self.settings.get('style_ornamentplus_color',default_style_color['style_ornamentplus_color']), font, size))
-        set_style(self.styler.STYLE_ORNAMENT_EXCL, "fore:%s,face:%s,size:%d" % (self.settings.get('style_ornamentexcl_color',default_style_color['style_ornamentexcl_color']), font, size))
+        styler = self.styler
+        set_style(styler.STYLE_DEFAULT, 'style_default_color')
+        set_style(styler.STYLE_CHORD, 'style_chord_color')
+        set_style(styler.STYLE_COMMENT_NORMAL, 'style_comment_color')
+        set_style(styler.STYLE_COMMENT_SPECIAL, 'style_specialcomment_color')
+        set_style(styler.STYLE_BAR, 'style_bar_color', 'bold,')
+        set_style(styler.STYLE_FIELD, 'style_field_color', 'bold,')
+        set_style(styler.STYLE_FIELD_VALUE, 'style_fieldvalue_color')
+        set_style(styler.STYLE_EMBEDDED_FIELD, 'style_embeddedfield_color', 'bold,')
+        set_style(styler.STYLE_EMBEDDED_FIELD_VALUE, 'style_embeddedfieldvalue_color')
+        set_style(styler.STYLE_FIELD_INDEX, 'style_fieldindex_color', 'bold,underline,')
+        set_style(styler.STYLE_STRING, 'style_string_color')
+        set_style(styler.STYLE_LYRICS, 'style_lyrics_color')
+        set_style(styler.STYLE_GRACE, 'style_grace_color')
+        set_style(styler.STYLE_ORNAMENT, 'style_ornament_color', 'bold,')
+        set_style(styler.STYLE_ORNAMENT_PLUS, 'style_ornamentplus_color')
+        set_style(styler.STYLE_ORNAMENT_EXCL, 'style_ornamentexcl_color')
 
         editor.SetModEventMask(wx.stc.STC_MODEVENTMASKALL & ~(wx.stc.STC_MOD_CHANGESTYLE | wx.stc.STC_PERFORMED_USER)) # [1.3.7.4] JWDJ: don't fire OnModified on style changes
         editor.Colourise(0, editor.GetLength())
@@ -8969,10 +8964,10 @@ class MyFileDropTarget(wx.FileDropTarget):
 class AboutFrame(wx.Dialog):
     htmlpage = '''
 <html>
-<body bgcolor="#FAFAF0">
+<body bgcolor="{background}" text="{text}">
 <center><img src="img/abclogo.png"/>
 </center>
-<p><b>{0}</b><br/>
+<p><b>{program_name}</b><br/>
 an open source ABC editor for Windows, OSX and Linux. It is published under the <a href="https://www.gnu.org/licenses/gpl-2.0.html">GNU Public License</a>. </p>
 <p><center>initial repository was at <a href="https://www.nilsliberg.se/ksp/easyabc/">https://www.nilsliberg.se/ksp/easyabc/</a></center></p>
 <p><center>Now documentation available here<a href="https://easyabc.sourceforge.net">https://easyabc.sourceforge.net</a></center></p>
@@ -9027,12 +9022,16 @@ an open source ABC editor for Windows, OSX and Linux. It is published under the 
 </ul>
 </body>
 </html>
-'''.format(program_name)
+'''
 
     def __init__(self, parent):
         wx.Dialog.__init__(self, parent, wx.ID_ANY, _('About EasyABC'), size=(900, 600) )
         about_html = wx.html.HtmlWindow(self, -1)
-        about_html.SetPage(self.htmlpage)
+        appearance = current_appearance()
+        about_html.SetPage(self.htmlpage.format(
+            program_name=program_name,
+            background=appearance.html(appearance.window_background),
+            text=appearance.html(appearance.text)))
         button = wx.Button(self, wx.ID_OK, _('&Ok'))
         button.SetDefault()
 
@@ -9125,15 +9124,17 @@ class MyAbcFrame(wx.Frame):
         self.basicText.SetMarginWidth(1, 40)
         self.basicText.SetMarginType(1, stc.STC_MARGIN_NUMBER)
 
-        font = wx.Font(10, wx.FONTFAMILY_MODERN, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
-        face = font.GetFaceName()
-        size = font.GetPointSize()
-        self.basicText.StyleSetSpec(wx.stc.STC_STYLE_DEFAULT, "face:%s,size:%d" % (face, size)) # 1.3.6.3 [JWdJ] 2015-04-22 fixed font
+        self.ApplyAppearance()
 
         sizer = wx.BoxSizer()
         sizer.Add(self.basicText,1, wx.ALL | wx.EXPAND)
         self.SetSizer(sizer)
         sizer.Fit(self)
+
+    def ApplyAppearance(self):
+        font = wx.Font(10, wx.FONTFAMILY_MODERN, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
+        appearance = current_appearance()
+        apply_editor_appearance(self.basicText, appearance, appearance.style_palette.__getitem__, font.GetFaceName(), font.GetPointSize())
 
     def ShowText(self, text):
         try:

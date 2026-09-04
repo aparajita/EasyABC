@@ -30,6 +30,7 @@ from math import hypot, radians, sqrt, pi
 import traceback
 from datetime import datetime
 from wxhelper import wx_colour, wx_bitmap
+from appearance import PRINT_PAPER
 WX4 =wx.version().startswith('4')
 WX41 = WX4 and not wx.version().startswith('4.0')
 
@@ -290,8 +291,9 @@ class SvgPage(object):
 
 
 class SvgRenderer(object):
-    def __init__(self, can_draw_sharps_and_flats, highlight_color, highlight_follow_color = None):
+    def __init__(self, can_draw_sharps_and_flats, highlight_color, highlight_follow_color = None, paper_color = PRINT_PAPER):
         self.can_draw_sharps_and_flats = can_draw_sharps_and_flats
+        self.paper_color = paper_color
         self.path_cache = {}
         self.fill_cache = {}
         self.stroke_cache = {}
@@ -386,11 +388,16 @@ class SvgRenderer(object):
             self.clear()
             raise
 
+    def paper_brush(self):
+        return wx.Brush(wx_colour(self.paper_color), wx.SOLID)
+
+    def clear_to_paper(self, dc):
+        dc.SetBackground(self.paper_brush())
+        dc.Clear()
+
     def clear(self):
         if self.buffer:
-            dc = wx.MemoryDC(self.buffer)
-            dc.SetBackground(wx.WHITE_BRUSH)
-            dc.Clear()
+            self.clear_to_paper(wx.MemoryDC(self.buffer))
 
     def draw_notes(self, page, note_indices, highlight, dc=None, highlight_follow=False ):
         if not page.note_draw_info or not note_indices:
@@ -412,8 +419,7 @@ class SvgRenderer(object):
         dc = dc or wx.MemoryDC(self.buffer)
         ##print 'draw', self.buffer.GetWidth(), self.buffer.GetHeight()
         if clear_background:
-            dc.SetBackground(wx.WHITE_BRUSH)
-            dc.Clear()
+            self.clear_to_paper(dc)
         #h = dc.Size[1] # for simulating OSX
         gc = wx.GraphicsContext.Create(dc)
         #gc.Translate(0, h) # for simulating OSX

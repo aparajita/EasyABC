@@ -1,6 +1,7 @@
 import wx
 import traceback
 from wxhelper import wx_cursor, wx_colour
+from appearance import SCORE_DRAG_RECT_FILL, SCORE_DRAG_RECT_BORDER
 WX4 = wx.version().startswith('4')
 
 class MusicScorePanel(wx.ScrolledWindow):
@@ -220,8 +221,7 @@ class MusicScorePanel(wx.ScrolledWindow):
             if self.highlighted_notes:
                 self.renderer.draw_notes(page=self.current_page, note_indices=self.highlighted_notes, highlight=True, dc=dc, highlight_follow=self.highlight_follow)
         else:
-            dc.SetBackground(wx.WHITE_BRUSH)
-            dc.Clear()
+            self.renderer.clear_to_paper(dc)
 
     def set_page(self, page):
         is_other_page = self.current_page and page and self.current_page.index != page.index
@@ -266,8 +266,8 @@ class MusicScorePanel(wx.ScrolledWindow):
             x, y, width, height = self.drag_rect
             #FAU Width argument for pen is an int not a float.
             #dc.SetPen( dc.CreatePen(wx.Pen(wx_colour('black'), 1.0, style=wx.DOT )) )
-            dc.SetPen( dc.CreatePen(wx.Pen(wx_colour('black'), width=1, style=wx.DOT )) )
-            dc.SetBrush(dc.CreateBrush(wx.Brush(wx_colour('#fffbc6'), wx.SOLID)))
+            dc.SetPen( dc.CreatePen(wx.Pen(wx_colour(SCORE_DRAG_RECT_BORDER), width=1, style=wx.DOT )) )
+            dc.SetBrush(dc.CreateBrush(wx.Brush(wx_colour(SCORE_DRAG_RECT_FILL), wx.SOLID)))
             path = dc.CreatePath()
             path.MoveToPoint(x, y)
             path.AddLineToPoint(x+width, y)
@@ -293,8 +293,7 @@ class MusicScorePanel(wx.ScrolledWindow):
         if not WX4:
             dc.BeginDrawing()
         try:
-            dc.SetBackground(wx.WHITE_BRUSH)
-            dc.Clear()
+            self.renderer.clear_to_paper(dc)
             self.draw_drag_rect(dc)
             if self.current_page != self.renderer.empty_page:
                 self.renderer.draw(page=self.current_page, clear_background=False, dc=dc)

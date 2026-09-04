@@ -36,8 +36,16 @@ class ABCStyler:
         self.fields = 'ABCDEFGHIJKLMmNOPQRrSsTUVWwXYZ'
         self.ornaments = 'HIJKLMNOPQRSTUVWhijklmnopqrstuvw~'
         # go back to default style if next character is \r\n (to avoid some strange syntax highlighting with lyrics at least on mac version)
+        # the style that follows a field label's colon; every other field uses STYLE_FIELD_VALUE
+        self.field_value_styles = {
+            'w': self.STYLE_LYRICS,
+            'W': self.STYLE_LYRICS,
+            'X': self.STYLE_FIELD_INDEX,
+        }
         self.style_changers = {
             self.STYLE_FIELD_VALUE: '\n%',
+            self.STYLE_LYRICS: '\n%',
+            self.STYLE_FIELD_INDEX: '\n%',
             self.STYLE_COMMENT_NORMAL: '\n',
             self.STYLE_COMMENT_SPECIAL: '\n%',
             self.STYLE_ORNAMENT_EXCL: '!\n%',
@@ -79,6 +87,8 @@ class ABCStyler:
         style_changers = self.style_changers
         style_per_char = self.style_per_char
         style_keepers = self.style_keepers
+        field_value_styles = self.field_value_styles
+        field_value_style = STYLE_FIELD_VALUE
         fields = self.fields
         ornaments = self.ornaments
         editor = self.e
@@ -108,6 +118,17 @@ class ABCStyler:
         styles = bytearray(buffer_size)
         style_changer = None
         style_keeper = None
+        buffer_start = start + 1
+
+        def char_after_next(index):
+            # the character following chNext; it is fetched from the editor when it lies past the buffer
+            position = buffer_start + index + 1
+            if position < buffer_start + len(next_buffer):
+                return next_buffer[index + 1]
+            if position < text_length:
+                return chr(get_char_at(position))
+            return '\x00'
+
         while True:
             count = 0
             next_buffer = get_text_range(buffer_pos, min(buffer_pos + buffer_size, text_length))
@@ -115,7 +136,8 @@ class ABCStyler:
             buffer_pos += len(next_buffer)
             if buffer_pos >= text_length:
                 next_buffer.append('\x00')  # add a dummy character so the last actual character gets processed too
-            for chNext in next_buffer:
+            buffer_start = buffer_pos - len(next_buffer)
+            for index, chNext in enumerate(next_buffer):
                 if (not style_changer or ch in style_changer) and (not style_keeper or not ch in style_keeper):
                     style_changer = None
                     if style_keeper:
@@ -125,17 +147,11 @@ class ABCStyler:
                     if ch in '\r\n':
                         state = STYLE_DEFAULT
                     elif state == STYLE_DEFAULT:
-                        if chPrev in '\n[\x00' and ch in fields and chNext == ':':
-                            if chPrev == '[':
-                                state = STYLE_EMBEDDED_FIELD   # field on the [M:3/4] form
-                            elif ch in 'wW':
-                                state = STYLE_LYRICS
-                                style_changer = style_changers[STYLE_FIELD_VALUE]
-                            elif ch == 'X':
-                                state = STYLE_FIELD_INDEX
-                                style_changer = style_changers[STYLE_FIELD_VALUE]
-                            else:
-                                state = STYLE_FIELD
+                        if chPrev in '\n\x00' and ch in fields and chNext == ':':
+                            state = STYLE_FIELD
+                            field_value_style = field_value_styles.get(ch, STYLE_FIELD_VALUE)
+                        elif ch == '[' and chNext in fields and char_after_next(index) == ':':
+                            state = STYLE_EMBEDDED_FIELD   # field on the [M:3/4] form, brackets included
                         elif ch == '|' or (ch in ':.' and chNext in '|:') or (ch == '[' and chNext in '1234'):
                             state = STYLE_BAR
                             style_keeper = style_keepers[state]
@@ -165,16 +181,20 @@ class ABCStyler:
                             next_state = STYLE_DEFAULT
                     elif state == STYLE_COMMENT_SPECIAL and chPrev == '%':
                         style_changer = style_changers[state]
-                    elif state in (STYLE_FIELD_VALUE, STYLE_LYRICS, STYLE_COMMENT_SPECIAL):
+                    elif state in (STYLE_FIELD_VALUE, STYLE_LYRICS, STYLE_FIELD_INDEX, STYLE_COMMENT_SPECIAL):
                         if ch == '%' and chPrev != '\\':
                             state = STYLE_COMMENT_NORMAL
                             style_changer = style_changers[state]
-                    elif state in (STYLE_CHORD, STYLE_EMBEDDED_FIELD_VALUE):
+                    elif state == STYLE_CHORD:
                         if ch == ']':
                             state = STYLE_DEFAULT
+                    elif state == STYLE_EMBEDDED_FIELD_VALUE:
+                        if ch == ']':
+                            state = STYLE_EMBEDDED_FIELD   # the closing bracket takes the label's color
+                            next_state = STYLE_DEFAULT
                     elif state == STYLE_FIELD:
                         if ch == ':':
-                            next_state = STYLE_FIELD_VALUE
+                            next_state = field_value_style
                             style_changer = style_changers[next_state]
                     elif state == STYLE_EMBEDDED_FIELD:
                         if ch == ':':
