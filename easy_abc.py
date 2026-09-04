@@ -101,7 +101,7 @@ from xml2abc_interface import xml_to_abc, abc_to_xml
 from midi2abc import midi_to_abc, Note, duration2abc
 from generalmidi import general_midi_instruments
 from abc_styler import ABCStyler
-from abc_character_encoding import decode_abc, abc_text_to_unicode, get_encoding_abc
+from abc_character_encoding import decode_abc, abc_text_to_unicode, ensure_unicode, get_encoding_abc
 from abc_search import abc_matches_iter
 from fractions import Fraction
 from music_score_panel import MusicScorePanel
@@ -450,6 +450,35 @@ def get_ghostscript_path():
         return sorted(available_versions)[-1][1]   # path to the latest version
     else:
         return None
+
+# Locations searched when gs is not on PATH. An app bundle launched from Finder
+# inherits the bare login PATH, which contains neither Homebrew prefix.
+gs_search_paths = ['/opt/homebrew/bin/gs', '/usr/local/bin/gs', '/opt/local/bin/gs', '/usr/bin/gs']
+
+def find_ps_to_pdf_converter():
+    ''' Returns the path of a PostScript-to-PDF converter, or '' if there is none.
+        Windows keeps ghostscript in the registry; elsewhere it is an executable
+        on PATH or in one of the usual package-manager prefixes. macOS shipped
+        /usr/bin/pstopdf up to Ventura and can still use it as a last resort.
+    '''
+    if wx.Platform == "__WXMSW__":
+        return get_ghostscript_path() or ''
+
+    try:
+        path = subprocess.check_output(["which", "gs"]).decode().strip()
+        if path:
+            return path
+    except Exception:
+        pass
+
+    for path in gs_search_paths:
+        if os.path.exists(path):
+            return path
+
+    if wx.Platform == "__WXMAC__" and os.path.exists('/usr/bin/pstopdf'):
+        return '/usr/bin/pstopdf'
+
+    return ''
 
 def launch_file(filepath):
     ''' open the given document using its associated program '''
@@ -918,7 +947,7 @@ def AbcToPDF(settings, abc_code, header, cache_dir, extra_params='', abcm2ps_pat
     #if generate_toc:
     #    add_table_of_contents_to_postscript_file(ps_file)
 
-    gs_path = unicode(gs_path)
+    gs_path = ensure_unicode(gs_path)
 
     # convert ps to pdf
     # p09 we already checked for gs_path in restore_settings() 2014-10-14
@@ -926,7 +955,7 @@ def AbcToPDF(settings, abc_code, header, cache_dir, extra_params='', abcm2ps_pat
     #FAU:PDF:Manage the case where one put ps2pdf from ghostscript instead of gs directly
     if 'ps2pdf' in gs_path:
         cmd2 = [gs_path, ps_file, pdf_file]
-    elif wx.Platform == "__WXMAC__" and int(platform.mac_ver()[0].split('.')[0]) <= 13 and gs_path == '/usr/bin/pstopdf':
+    elif gs_path == '/usr/bin/pstopdf':
         cmd2 = [gs_path, ps_file, '-o', pdf_file]
     if os.path.exists(pdf_file):
         os.remove(pdf_file)
@@ -8821,36 +8850,18 @@ class MainFrame(wx.Frame):
                 dlg = wx.MessageDialog(self, _('The midiplayer was not found. You will not be able to play the MIDI file.'), _('Warning'), wx.OK)
                 dlg.ShowModal()
 
+        # A stored path that no longer exists is as good as no path at all: the
+        # converter it named may have been uninstalled, or removed by an OS
+        # upgrade (Apple dropped /usr/bin/pstopdf in Sonoma). Detect again
+        # rather than keeping a value that cannot produce a PDF.
         gs_path = settings.get('gs_path')
-        # 1.3.6.1 [SS] 2015-01-28
-
-        if not gs_path:
-            if wx.Platform == "__WXMSW__":
-                gs_path = get_ghostscript_path()
-                settings['gs_path'] = gs_path
-            #FAU:PDF:pstopdf is not provided by Apple starting from MacOS Sonoma. So in any case look for ghostscript and use /usr/bin/pstopdf only if Mac OS version earlier than Sonoma.
-            #elif wx.Platform == '__WXGTK__':
-            else:
-                try:
-                    gs_path = subprocess.check_output(["which", "gs"])
-                    settings['gs_path'] = gs_path[0:-1].decode()
-                except:
-                    if wx.Platform == "__WXMAC__" and int(platform.mac_ver()[0].split('.')[0]) <= 13:
-                        settings['gs_path'] = '/usr/bin/pstopdf'
-                    else:
-                        settings['gs_path'] = ''
-            #1.3.6.1 [SS] 2014-01-13
-            #FAU:PDF:pstopdf is not provided by Apple starting from MacOS Sonoma. So merge with Ghostscript in case ghostscript is installed
-            #elif wx.Platform == "__WXMAC__":
-            #    gs_path = '/usr/bin/pstopdf'
-            #    settings['gs_path'] = gs_path
-
-        # 1.3.6.1 [SS] 2015-01-12 2015-01-22
-        gs_path = settings['gs_path'] #eliminate trailing \n
-        if gs_path and (os.path.exists(gs_path) == False):
-            msg = _('The executable %s could not be found') % gs_path
-            dlg = wx.MessageDialog(self, msg, _('Warning'), wx.OK)
-            dlg.ShowModal()
+        if not gs_path or not os.path.exists(gs_path):
+            replacement = find_ps_to_pdf_converter()
+            if not replacement and gs_path:
+                msg = _('The executable %s could not be found') % gs_path
+                dlg = wx.MessageDialog(self, msg, _('Warning'), wx.OK)
+                dlg.ShowModal()
+            settings['gs_path'] = replacement
 
         #Fix midi_program_ch settings - 1.3.5 to 1.3.6 compatibility 2014-11-14
         midi_program_ch_list = ['midi_program_ch%d' % ch for ch in range(1, 16 + 1)]
