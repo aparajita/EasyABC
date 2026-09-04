@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 set -euo pipefail
 
 python_formula="python@3.14"
@@ -25,7 +26,11 @@ if ! command -v brew >/dev/null 2>&1; then
   exit 1
 fi
 
-brew install abcm2ps abcmidi
+for formula in abcm2ps abcmidi; do
+  if ! brew list --versions "$formula" >/dev/null 2>&1; then
+    brew install "$formula"
+  fi
+done
 
 if ! command -v uv >/dev/null 2>&1; then
   brew install uv
@@ -40,18 +45,28 @@ if [[ ! -d .venv ]]; then
   uv pip install -r requirements.txt
 fi
 
+# Homebrew binaries are read-only, so a copy over an existing one is denied.
+copy_tool() {
+  local formula="$1"
+  local tool="$2"
+
+  if [[ ! -e "bin/$tool" ]]; then
+    cp "$(brew --prefix "$formula")/bin/$tool" bin/
+  fi
+}
+
 mkdir -p bin
-cp "$(brew --prefix abcm2ps)/bin/abcm2ps" bin/
+copy_tool abcm2ps abcm2ps
 for tool in abc2abc abc2midi midi2abc; do
-  cp "$(brew --prefix abcmidi)/bin/$tool" bin/
+  copy_tool abcmidi "$tool"
 done
 
 .venv/bin/python setup.py py2app
 
 for dir in locale/*/; do
    file=$(basename "$dir")
-   mkdir "dist/EasyABC.app/Contents/Resources/$file.lproj"
+   mkdir -p "dist/EasyABC.app/Contents/Resources/$file.lproj"
 done
-mkdir "dist/EasyABC.app/Contents/Resources/English.lproj"   
+mkdir -p "dist/EasyABC.app/Contents/Resources/English.lproj"
 #force to have executable binary as py2app remove the executable flag
 chmod +x dist/EasyABC.app/Contents/Resources/bin/*
