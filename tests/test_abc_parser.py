@@ -103,6 +103,56 @@ class ParseAbcTests(unittest.TestCase):
             with self.subTest(expected_line=expected_line):
                 self.assertEqual(match.position.line, expected_line)
 
+    def test_lyric_alignment_reports_every_unpaired_note_and_syllable(self):
+        # The header occupies lines 1-5, so the music is line 6 and the first w: line is line 7.
+        header = 'X:1\nT:Test\nM:4/4\nL:1/4\nK:C\n'
+        bare_note = 'note has no lyric in verse 1'
+        cases = [
+            (
+                'surplus syllables at the end of the line are each reported inside the w: text',
+                'C D E F |\n'
+                'w: one two three four five six |\n',
+                [('lyric has no note in verse 1: five', 7, 20), ('lyric has no note in verse 1: six', 7, 25)],
+            ),
+            (
+                'a note past the last syllable is reported; the rests and bars after it are not',
+                'C D E F z2 | z4 |]\n'
+                'w: one two three\n',
+                [(bare_note, 6, 6)],
+            ),
+            (
+                'a bar with too many syllables reports the extra one and the next bar aligns cleanly',
+                'C D | E F |\n'
+                'w: one two three | four five |\n',
+                [('lyric has no note in verse 1: three', 7, 9)],
+            ),
+            (
+                'a bar with too few syllables reports its bare notes and the next bar aligns cleanly',
+                'C D E F | G A |\n'
+                'w: one two | three four |\n',
+                [(bare_note, 6, 4), (bare_note, 6, 6)],
+            ),
+            (
+                'skips, extends, hyphens, grace notes and chord notes all pair correctly',
+                'C D E F | {g}A [CE] B c |\n'
+                'w: one * two- _ | three four fi-ve |\n',
+                [],
+            ),
+            (
+                'a mismatch in the second verse alone is reported once, naming that verse',
+                'C D |\n'
+                'w: one two\n'
+                'w: one\n',
+                [('note has no lyric in verse 2', 6, 2)],
+            ),
+        ]
+        for description, body, expected in cases:
+            with self.subTest(description=description):
+                diagnostics = parse_abc(header + body)
+                found = [(d.message, d.position.line, d.position.column) for d in diagnostics]
+                self.assertEqual(found, expected)
+                self.assertTrue(all(d.severity == Severity.ERROR for d in diagnostics))
+
 
 if __name__ == '__main__':
     unittest.main()

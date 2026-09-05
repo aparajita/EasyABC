@@ -496,18 +496,36 @@ def doGrace (t):        # t is a Group() result -> the grace sequence is in t[0]
         if nt.name == 'note': nt.grace = 1 # set grace attribute
     return t[0]         # ungroup the parse result
 
-def alignLyr (vce, lyrs):
+def nextLyricBar (lyr, i):  # index of the first '|' in lyr at or after i, or None
+    for j in range (i, len (lyr)):
+        if lyr[j].name == 'sbar': return j
+    return None
+
+def alignLyr (vce, lyrs, blk):
+    # pairs the syllables of every verse in blk with the notes in vce, appending one lyric object per verse to each
+    # note; a note without a syllable gets a filler and is recorded in blk.bareNotes, a syllable without a note is
+    # recorded in blk.surplus, both as (verse index, node). A '|' in a verse resynchronises to the next bar line.
     empty_el = pObj ('leeg', '*')
+    blk.bareNotes = []
+    blk.surplus = []
     for k, lyr in enumerate (lyrs): # lyr = one full line of lyrics
         i = 0               # syl counter
         for elem in vce:    # reiterate the voice block for each lyrics line; only notes and rbars consume syllables, an 'error' element consumes none
             if elem.name == 'note' and not (hasattr (elem, 'chord') or hasattr (elem, 'grace')):
-                if i >= len (lyr): lr = empty_el
-                else: lr = lyr [i]
-                lr.t[0] = lr.t[0].replace ('%5d',']')
+                if i < len (lyr) and lyr[i].name != 'sbar':
+                    lr = lyr [i]
+                    lr.t[0] = lr.t[0].replace ('%5d',']')
+                    i += 1
+                else:
+                    lr = empty_el
+                    blk.bareNotes.append ((k, elem))
                 elem.objs.append (lr)
-                if lr.name != 'sbar': i += 1
-            if elem.name == 'rbar' and i < len (lyr) and lyr[i].name == 'sbar': i += 1
+            if elem.name == 'rbar':
+                j = nextLyricBar (lyr, i)
+                if j is not None:
+                    blk.surplus.extend ((k, x) for x in lyr [i:j])
+                    i = j + 1
+        blk.surplus.extend ((k, x) for x in lyr [i:] if x.name != 'sbar')
     return vce
 
 slur_move = re.compile (r'(?<![!+])([}><][<>]?)(\)+)')  # (?<!...) means: not preceeded by ...
@@ -792,7 +810,7 @@ class Validator:
             'note': s.check_note, 'rest': s.check_note, 'inline': s.check_inline_field, 'error': s.check_misplaced_symbol,
             'tup': s.start_tuplet, 'deco': s.check_staff_decorations, 'rbar': s.note_overlay,
             'lbar': s.ignore, 'text': s.ignore, 'accia': s.ignore, 'linebrk': s.ignore, 'chordsym': s.ignore,
-            'lyr_blk': s.ignore, 'broken': s.ignore }
+            'lyr_blk': s.check_lyric_alignment, 'broken': s.ignore }
 
     def ignore (s, node): pass
 
@@ -1098,6 +1116,12 @@ class Validator:
             else: continue
             s.prevLyric [i] = 1
 
+    def check_lyric_alignment (s, blk):     # every note pairs with one syllable of each verse, and every syllable with one note
+        for verse, note in blk.bareNotes:
+            s.error ('note has no lyric in verse %d' % (verse + 1), s.node_position (note))
+        for verse, syl in blk.surplus:
+            s.error ('lyric has no note in verse %d: %s' % (verse + 1, ''.join (syl.t)), s.lyric_position (syl))
+
     #---------------- fields ----------------
 
     def check_inline_field (s, node):
@@ -1291,7 +1315,7 @@ def parse_abc (abc_text):
             for e in m:         # all abc-elements
                 if e.name == 'lyr_blk':         # -> e.objs is list of lyric lines
                     lyr = [line.objs for line in e.objs]    # line.objs is listof syllables
-                    alignLyr (lyr_notes, lyr)   # put all syllables into corresponding notes
+                    alignLyr (lyr_notes, lyr, e)    # put all syllables into corresponding notes
                     lyr_notes = []
                 else:
                     lyr_notes.append (e)
