@@ -101,6 +101,8 @@ from xml2abc_interface import xml_to_abc, abc_to_xml
 from midi2abc import midi_to_abc, Note, duration2abc
 from generalmidi import general_midi_instruments
 from abc_styler import ABCStyler
+from abc_parser import parse_abc
+from error_marks import ErrorMarks
 from abc_character_encoding import decode_abc, abc_text_to_unicode, ensure_unicode, get_encoding_abc
 from abc_search import abc_matches_iter
 from fractions import Fraction
@@ -193,11 +195,13 @@ class MidiTune(object):
 # 1.3.6.2 [JWdJ]
 class SvgTune(object):
     """ Container for abcm2ps-generated .svg files """
-    def __init__(self, abc_tune, svg_files, error=None):
+    def __init__(self, abc_tune, svg_files, error, diagnostics, header_line_count):
         self.error = error
         self.svg_files = svg_files
         self.pages = {}
         self.abc_tune = abc_tune
+        self.diagnostics = diagnostics
+        self.header_line_count = header_line_count
 
     def render_page(self, page_index, renderer):
         if 0 <= page_index < self.page_count:
@@ -1568,8 +1572,14 @@ class MusicUpdateThread(threading.Thread):
             task = self.queue.get()
             self.queue.task_done()
             abc_tune = None
+            diagnostics = []
+            header_line_count = 0
             try:
                 abc_code, abc_header = task
+                if abc_code:
+                    # a failure here is a parser bug, not a tune error; it propagates to the error pane
+                    header_line_count = len(line_end_re.findall(abc_header))
+                    diagnostics = parse_abc(abc_header + abc_code)
                 if not abc_code:
                     svg_files, error = [], None
                 elif not 'K:' in abc_code:
@@ -1595,7 +1605,7 @@ class MusicUpdateThread(threading.Thread):
                 # error_msg = traceback.format_exc()
                 # print(error_msg)
                 pass
-            svg_tune = SvgTune(abc_tune, svg_files, error)
+            svg_tune = SvgTune(abc_tune, svg_files, error, diagnostics, header_line_count)
             if application_running:
                 wx.PostEvent(self.notify_window, MusicUpdateDoneEvent(-1, svg_tune))
 
@@ -3141,6 +3151,7 @@ class ColorSettingsFrame(wx.Panel):
             'style_ornament_color':_("Color of ornament"),
             'style_ornamentplus_color':_("Color of ornament plus"),
             'style_ornamentexcl_color':_("Color of ornament excl"),
+            'style_error_color':_("Color of errors"),
             'style_grace_color':_("Color of grace notes"),
             'style_selection_color':_("Color of selection"),
         }
@@ -4077,6 +4088,7 @@ class MainFrame(wx.Frame):
 
         self.tune_list.SetAutoLayout(True)
         self.editor = stc.StyledTextCtrl(self, -1)
+        self.error_marks = ErrorMarks(self.editor)
         self.editor.SetCodePage(stc.STC_CP_UTF8)
 
         self.new_tune()
@@ -8206,6 +8218,11 @@ class MainFrame(wx.Frame):
         tune = evt.GetValue()
         same_tune = tune.is_equal(self.current_svg_tune)
         self.current_svg_tune = tune
+        selected = self.GetSelectedTune()
+        if selected:
+            self.error_marks.apply(self.editor.LineFromPosition(selected.offset_start), tune.header_line_count, tune.diagnostics)
+        else:
+            self.error_marks.clear()
         if not same_tune:
             self.music_and_score_out_of_sync()
             self.current_page_index = 0 # 1.3.7.2 [JWDJ] always go to first page after switching tunes
@@ -8519,8 +8536,10 @@ class MainFrame(wx.Frame):
         set_style(styler.STYLE_ORNAMENT, 'style_ornament_color', 'bold,')
         set_style(styler.STYLE_ORNAMENT_PLUS, 'style_ornamentplus_color')
         set_style(styler.STYLE_ORNAMENT_EXCL, 'style_ornamentexcl_color')
+        self.error_marks.set_color(style_color('style_error_color'))
 
-        editor.SetModEventMask(wx.stc.STC_MODEVENTMASKALL & ~(wx.stc.STC_MOD_CHANGESTYLE | wx.stc.STC_PERFORMED_USER)) # [1.3.7.4] JWDJ: don't fire OnModified on style changes
+        # style changes and indicator fills never fire OnModified, so a squiggle cannot re-trigger a refresh
+        editor.SetModEventMask(wx.stc.STC_MODEVENTMASKALL & ~(wx.stc.STC_MOD_CHANGESTYLE | wx.stc.STC_MOD_CHANGEINDICATOR | wx.stc.STC_PERFORMED_USER))
         editor.Colourise(0, editor.GetLength())
 
 
@@ -9322,13 +9341,14 @@ class MyApp(wx.App):
             sys.stdout.write(traceback.format_exc())
         return True
 
-app = MyApp(0)
+if __name__ == '__main__':
+    app = MyApp(0)
 
-#import wx.lib.inspection
-#wx.lib.inspection.InspectionTool().Show()
+    #import wx.lib.inspection
+    #wx.lib.inspection.InspectionTool().Show()
 
-app.MainLoop()
-application_running = False
+    app.MainLoop()
+    application_running = False
 current_locale = None
 app = None
 

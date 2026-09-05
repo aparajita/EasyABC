@@ -17,6 +17,11 @@ SCORE_COLOR = '#FFFDF0'
 PRINT_PAPER = WHITE
 PRINT_INK = BLACK
 
+# Diagnostic tooltip icons keep their colour on both appearances.
+ERROR_ICON = '#E5484D'
+WARNING_ICON = '#F5C518'
+ICON_GLYPH = WHITE
+
 DEFAULT_NOTE_HIGHLIGHT = '#FF7F3F'
 DEFAULT_NOTE_HIGHLIGHT_FOLLOW = '#CC00FF'
 
@@ -46,6 +51,7 @@ LIGHT_STYLE_PALETTE = {
     'style_ornament_color': '#4876D6',
     'style_ornamentplus_color': '#4876D6',
     'style_ornamentexcl_color': '#4876D6',
+    'style_error_color': '#DE3D3B',
     'style_selection_color': '#2E78DB',
     'score_paper': SCORE_COLOR,
 }
@@ -67,6 +73,7 @@ DARK_STYLE_PALETTE = {
     'style_ornament_color': '#C5E478',
     'style_ornamentplus_color': '#82AAFF',
     'style_ornamentexcl_color': '#82AAFF',
+    'style_error_color': '#EF5350',
     'style_selection_color': '#2E78DB',
     'score_paper': SCORE_COLOR,
 }
@@ -82,6 +89,9 @@ class Appearance:
         self.window_background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
         self.text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT)
         self.editor_background = self.window_background
+        self.tooltip_background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_INFOBK)
+        self.tooltip_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_INFOTEXT)
+        self.tooltip_border = wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT)
         if self.is_dark:
             self.style_palette = DARK_STYLE_PALETTE
             self._settings_key_prefix = DARK_SETTINGS_KEY_PREFIX

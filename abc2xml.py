@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=latin-1
-"""
+'''
 Copyright (C) 2012-2018: Willem G. Vree
 Contributions: Nils Liberg, Nicolas Froment, Norman Schmidt, Reinier Maliepaard, Martin Tarenskeen,
                Paul Villiger, Alexander Scheutzow, Herbert Schneider, David Randolph, Michael Strasser
@@ -10,8 +10,8 @@ Lesser GNU General Public License as published by the Free Software Foundation;
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See the Lesser GNU General Public License for more details. <https://www.gnu.org/licenses/lgpl.html>.
-"""
+See the Lesser GNU General Public License for more details. <http://www.gnu.org/licenses/lgpl.html>.
+'''
 
 from functools import reduce
 from pyparsing import Word, OneOrMore, Optional, Literal, NotAny, MatchFirst
@@ -107,10 +107,10 @@ def abc_grammar ():     # header, voice and lyrics grammar for ABC
     lyr_elem    = (syllable | skip_note | extend_note | measure_end) + Optional (white).suppress ()
     lyr_line    = Optional (white).suppress () + ZeroOrMore (lyr_elem)
     
-    syllable.setParseAction (lambda t: pObj ('syl', t))
-    skip_note.setParseAction (lambda t: pObj ('skip', t))
-    extend_note.setParseAction (lambda t: pObj ('ext', t))
-    measure_end.setParseAction (lambda t: pObj ('sbar', t))
+    syllable.setParseAction (posPobj ('syl'))
+    skip_note.setParseAction (posPobj ('skip'))
+    extend_note.setParseAction (posPobj ('ext'))
+    measure_end.setParseAction (posPobj ('sbar'))
     lyr_line_wsp = lyr_line.leaveWhitespace ()   # parse actions must be set before calling leaveWhitespace
 
     #---------------------------------------------------------------------------------
@@ -237,7 +237,7 @@ def abc_grammar ():     # header, voice and lyrics grammar for ABC
     acciaccatura.setParseAction (lambda t: pObj ('accia', t))
     note.setParseAction (noteActn)
     rest.setParseAction (restActn)
-    decorations.setParseAction (lambda t: pObj ('deco', t))
+    decorations.setParseAction (posPobj ('deco'))
     pizzicato.setParseAction (lambda t: ['!plus!']) # translate !+!
     slur_ends.setParseAction (lambda t: pObj ('slurs', t))
     chord.setParseAction (lambda t: pObj ('chord', t, 1))
@@ -281,6 +281,7 @@ class pObj (object):    # every relevant parse result is converted into a pObj
         for nm in dir (s):
             if nm.startswith ('_'): continue # skip build in attributes
             elif nm == 'name': continue     # redundant
+            elif nm in ('srcline', 'srcexcerpt', 'srccaret'): continue  # source position, not an ABC token
             else:
                 x = getattr (s, nm)
                 if not x: continue          # s.t may be empty (list of non-pObj's)
@@ -302,24 +303,71 @@ def detectBeamBreak (line, loc, t):
     b = pObj ('bbrk', [' ' in xs])      # space somewhere between two notes -> beambreak
     t.insert (0, b)             # insert beambreak as a nested parse result
 
+global curVoiceRows             # curVoiceRows[row] -> original .abc file line number of that row
+curVoiceRows = []                # of the voice text currently being parsed (set in MusicXml.parse)
+def srcContext (line, loc):     # 'line' = full voice text being parsed, 'loc' = char offset into it
+    row = line.count ('\n', 0, loc)
+    srcline = curVoiceRows [row] if row < len (curVoiceRows) else None
+    linestart = line.rfind ('\n', 0, loc) + 1   # start of loc's own physical row (0 if none precedes)
+    lineend = line.find ('\n', loc)
+    if lineend == -1:
+        lineend = len (line)
+    excerpt, xloc = line [linestart:lineend], loc - linestart  # confined to loc's row: no adjacent-row bleed
+    if len (excerpt) > 80 and xloc > 40:  # only window rows too wide to show whole; short rows print in full
+        cut = xloc - 40
+        excerpt = excerpt [cut: xloc + 40]
+        xloc -= cut
+    caret = xloc * '-' + '^'
+    return srcline, excerpt, caret
+
+def reportAtPos (srcline, excerpt, caret, msg):  # print msg with source line/excerpt/caret, if known
+    if srcline is None:
+        info (msg)
+        return
+    info ('%s: %s' % (srcline, msg), warn=0)
+    info (excerpt, warn=0)
+    info (caret, warn=0)
+
+def reportAtSrc (n, msg):       # report using a pObj previously stamped by srcContext (note/rest/deco/...)
+    reportAtPos (getattr (n, 'srcline', None), getattr (n, 'srcexcerpt', ''), getattr (n, 'srccaret', ''), msg)
+
+lyricFieldRE = re.compile (r'\[w:(.*?)\]')  # inline-converted w: field: [w:<lyric text>]
+def reportAtLyric (n, msg):     # as reportAtSrc, but unwrap the [w:...] lyric field and drop what follows it
+    excerpt, caret = getattr (n, 'srcexcerpt', ''), getattr (n, 'srccaret', '')
+    m = lyricFieldRE.search (excerpt)
+    xloc = len (caret) - 1
+    if m and m.start (1) <= xloc <= m.end ():
+        excerpt, xloc = m.group (1), xloc - m.start (1)
+        caret = max (0, min (xloc, len (excerpt))) * '-' + '^'
+    reportAtPos (getattr (n, 'srcline', None), excerpt, caret, msg)
+
+def posPobj (name):             # parse-action factory: pObj(name, t), stamped with its own source position
+    def action (line, loc, t):
+        p = pObj (name, t)
+        p.srcline, p.srcexcerpt, p.srccaret = srcContext (line, loc)
+        return p
+    return action
+
 def noteActn (line, loc, t):    # detect beambreak between previous and current note/rest
     if 'y' in t[0].t: return [] # discard spacer
     detectBeamBreak (line, loc, t)      # adds beambreak to parse result t as side effect
-    return pObj ('note', t)
+    p = pObj ('note', t)
+    p.srcline, p.srcexcerpt, p.srccaret = srcContext (line, loc)
+    return p
 
 def restActn (line, loc, t):    # detect beambreak between previous and current note/rest
     detectBeamBreak (line, loc, t)  # adds beambreak to parse result t as side effect
-    return pObj ('rest', t)
+    p = pObj ('rest', t)
+    p.srcline, p.srcexcerpt, p.srccaret = srcContext (line, loc)
+    return p
 
 def errorWarn (line, loc, t):   # warning for misplaced symbols and skip them
     if not t[0]: return []      # only warn if catched string not empty
-    info ('**misplaced symbol: %s' % t[0], warn=0)
-    lineCopy = line [:]
-    if loc > 40:
-        lineCopy = line [loc - 40: loc + 40]
-        loc = 40
-    info (lineCopy.replace ('\n', ' '), warn=0)
-    info (loc * '-' + '^', warn=0)
+    srcline, excerpt, caret = srcContext (line, loc)
+    msg = '**misplaced symbol: %s' % t[0]
+    info ('%s: %s' % (srcline, msg) if srcline is not None else msg, warn=0)
+    info (excerpt, warn=0)
+    info (caret, warn=0)
     return []
 
 #-------------------------------------------------------------
@@ -503,14 +551,29 @@ def fixSlurs (x):   # repair slurs when after broken sign or grace-close
     x = bar_space.sub (g, x)
     return slur_move.sub (r'\2\1', x)
 
+def buildVoiceRows (pieces, rowOf):
+    # pieces: [(text, r0), ...] in the order they were concatenated into one voice's abc text,
+    # r0 = index into rowOf where 'text' begins (rowOf[r] = original .abc file line for row r).
+    # Concatenating strings never merges or splits '\n' characters, so newlines-so-far in the
+    # final joined text is additive over the pieces; this mirrors that same accounting one row
+    # at a time so voiceRows[row] stays in lockstep with line[:loc].count('\n') at parse time.
+    voiceRows = []
+    for text, r0 in pieces:
+        frags = text.split ('\n')                        # k+1 fragments for k embedded newlines
+        rows = [rowOf [r0 + j] for j in range (len (frags))]
+        if voiceRows: voiceRows.extend (rows [1:])        # rows[0] continues the current (last) row
+        else:         voiceRows.extend (rows)             # first piece: rows[0] establishes row 0
+    return voiceRows
+
 def splitHeaderVoices (abctext):
     escField = lambda x: '[' + x.replace (']',r'%5d') + ']' # hope nobody uses %5d in a field
     r1 = re.compile (r'%.*$')           # comments
     r2 = re.compile (r'^([A-Zw]:.*$)|\[[A-Zw]:[^]]*]$')     # information field, including lyrics
     r3 = re.compile (r'^%%(?=[^%])')    # directive: ^%% folowed by not a %
-    xs, nx, mcont, fcont = [], 0, 0, 0  # result lines, X-encountered, music continuation, field continuation
+    xs, xsLines, nx, mcont, fcont = [], [], 0, 0, 0  # result lines (+ their source line nrs), X-encountered, music continuation, field continuation
     mln = fln = ''                      # music line, field line
-    for x in abctext.splitlines ():
+    mlnStart = flnStart = None          # source line number where the current mln/fln accumulation began
+    for curLine, x in enumerate (abctext.splitlines (), 1):
         x = x.strip ()
         if not x and nx == 1: break     # end of tune (empty line)
         if x.startswith ('X:'):
@@ -536,31 +599,39 @@ def splitHeaderVoices (abctext):
                 fcont = x2 [-1] == '\\' # possible further \-info-continuation
                 fln += re.sub (r'^.:(.*?)\\*$', r'\1', x2) # add continuation, remove .: and \
                 continue
-            if fln: mln += escField (fln)
+            if fln:
+                if not mln: mlnStart = flnStart  # this field will be the first content of its row
+                mln += escField (fln)
             if x2.startswith ('['): x2 = x2.strip ('[]')
             fcont = x2 [-1] == '\\'     # first encounter of old style \-info-continuation
             fln = x2.rstrip ('\\')      # remove continuation from field and inline brackets
+            flnStart = curLine          # a fresh fln starts here (old-style \-continuations keep this)
             continue
         if nx == 1:                     # x2 is a new music line
             fcont = 0                   # stop \-continuations (-> only adjacent \-info-continuations are joined)
             if fln:
+                if not mln: mlnStart = flnStart  # this field will be the first content of its row
                 mln +=  escField (fln)
                 fln = ''
             if mcont:
-                mcont = x2 [-1] == '\\' 
+                mcont = x2 [-1] == '\\'
                 mln += x2.rstrip ('\\')
             else:
-                if mln: xs.append (mln); mln = ''
+                if mln: xs.append (mln); xsLines.append (mlnStart); mln = ''
                 mcont = x2 [-1] == '\\'
                 mln = x2.rstrip ('\\')
-            if not mcont: xs.append (mln); mln = ''
-    if fln: mln += escField (fln)
-    if mln: xs.append (mln)
+                mlnStart = curLine      # a fresh mln starts here (old-style \-continuations keep this)
+            if not mcont: xs.append (mln); xsLines.append (mlnStart); mln = ''
+    if fln:
+        if not mln: mlnStart = flnStart  # this field will be the first content of its row
+        mln += escField (fln)
+    if mln: xs.append (mln); xsLines.append (mlnStart)
 
     hs = re.split (r'(\[K:[^]]*\])', xs [0])   # look for end of header K:
     if len (hs) == 1: header = hs[0]; xs [0] = ''               # no K: present
     else: header = hs [0] + hs [1]; xs [0] = ''.join (hs[2:])   # h[1] is the first K:
     abctext = '\n'.join (xs)                    # the rest is body text
+    rowOf = xsLines                              # rowOf[row] -> source line nr of row 'row' of abctext
     hfs, vfs = [], []
     for x in header[1:-1].split (']['):
         if x[0] == 'V': vfs.append (x)          # filter voice- and midi-definitions
@@ -577,8 +648,14 @@ def splitHeaderVoices (abctext):
 
     r1 = re.compile (r'\[V:\s*(\S*)[ \]]') # get voice id from V: field (skip spaces betwee V: and ID)
     vmap = {}                           # {voice id -> [voice abc string]}
+    vmapRows = {}                       # {voice id -> [(piece text, source row of its first char)]}
     vorder = {}                         # mark document order of voices
     xs = re.split (r'(\[V:[^]]*\])', abctext)   # split on every V-field (V-fields included in split result list)
+    xsRows = []                         # xsRows[i] -> row (index into rowOf) where xs[i] begins
+    row = 0
+    for piece in xs:
+        xsRows.append (row)
+        row += piece.count ('\n')
     if len (xs) == 1: raise ValueError ('bugs ...')
     else:
         pm = re.findall (r'\[P:.\]', xs[0])         # all P:-marks after K: but before first V:
@@ -587,17 +664,20 @@ def splitHeaderVoices (abctext):
         i = 1
         while i < len (xs):             # xs = ['', V-field, voice abc, V-field, voice abc, ...]
             vce, abc = xs[i:i+2]
+            vceRow, abcRow = xsRows[i], xsRows[i+1]
             id = r1.search (vce).group (1)                  # get voice ID from V-field
-            if not id: id, vce = '1', '[V:1]'               # voice def has no ID
+            if not id: id, vce = '1', '[V:1]'               # voice def has no ID (row unchanged, same source spot)
             vmap[id] = vmap.get (id, []) + [vce, abc]       # collect abc-text for each voice id (include V-fields)
+            vmapRows[id] = vmapRows.get (id, []) + [(vce, vceRow), (abc, abcRow)]
             if id not in vorder: vorder [id] = i            # store document order of first occurrence of voice id
             i += 2
     voices = []
     ixs = sorted ([(i, id) for id, i in vorder.items ()])   # restore document order of voices
     for i, id in ixs:
         voice = ''.join (vmap [id])     # all abc of one voice
-        voice = fixSlurs (voice)        # put slurs right after the notes
-        voices.append ((id, voice))
+        voiceRows = buildVoiceRows (vmapRows [id], rowOf)   # source line nr for each row of 'voice'
+        voice = fixSlurs (voice)        # put slurs right after the notes (never touches '\n', rows stay valid)
+        voices.append ((id, voice, voiceRows))
     return header, voices
 
 def mergeMeasure (m1, m2, slur_offset, voice_offset, rOpt, is_grand=0, is_overlay=0):
@@ -869,6 +949,7 @@ class MusicXml:
         s.grcbbrk = False   # remember any bbrk in a grace sequence
         s.linebrk = 0       # 1 if next measure should start with a line break
         s.nextdecos = []    # decorations for the next note
+        s.nextdecosPos = None  # (srcline, excerpt, caret) of the deco group they came from, if known
         s.prevmsre = None   # the previous measure
         s.supports_tag = 0  # issue supports-tag in xml file when abc uses explicit linebreaks
         s.staveDefs = []    # collected %%staves or %%score instructions from score
@@ -938,12 +1019,16 @@ class MusicXml:
     def getNoteDecos (s, n):
         decos = s.nextdecos             # decorations encountered so far
         ndeco = getattr (n, 'deco', 0)  # possible decorations of notes of a chord
-        if ndeco:                       # add decorations, translate used defined symbols
+        if ndeco:                       # add decorations, translate used defined symbols; use its own position
             decos += [s.usrSyms.get (d, d).strip ('!+') for d in ndeco.t]
+            decosPos = (getattr (ndeco, 'srcline', None), getattr (ndeco, 'srcexcerpt', ''), getattr (ndeco, 'srccaret', ''))
+        else:                            # else the position of the pending (non-chord) deco group, if any
+            decosPos = s.nextdecosPos or (None, '', '')
         s.nextdecos = []
+        s.nextdecosPos = None
         if s.tabStaff == s.pid and s.fOpt and n.name != 'rest':  # force fret/string allocation if explicit string decoration is missing
             if [d for d in decos if d in '0123456789'] == []: decos.append ('0')
-        return decos
+        return decos, decosPos
 
     def mkNote (s, n, lev):
         isgrace = getattr (n, 'grace', '')
@@ -1025,7 +1110,7 @@ class MusicXml:
         for i in range (ndot):          # add dots
             dot = E.Element ('dot')
             addElem (nt, dot, lev + 1)
-        decos = s.getNoteDecos (n)      # get decorations for this note
+        decos, decosPos = s.getNoteDecos (n)      # get decorations for this note, and where they came from
         if acc and not tstop:           # only add accidental if note not tied
             e = E.Element ('accidental')
             if 'courtesy' in decos:
@@ -1055,9 +1140,9 @@ class MusicXml:
         gstaff = s.gStaffNums.get (s.vid, 0)    # staff number of the current voice
         if gstaff: addElemT (nt, 'staff', str (gstaff), lev + 1)
         if hasStem: s.doBeams (n, nt, den, lev + 1)   # no stems -> no beams in a tab staff
-        s.doNotations (n, decos, ptup, alter, tupnotation, tstop, nt, lev + 1)
+        s.doNotations (n, decos, decosPos, ptup, alter, tupnotation, tstop, nt, lev + 1)
         if n.objs: s.doLyr (n, nt, lev + 1)
-        else: s.prevLyric = {}   # clear on note without lyrics
+        elif n.name != 'rest': s.prevLyric = {}   # clear on note without lyrics; a rest doesn't break a melisma
         return nt
 
     def cmpNormType (s, rdvs, lev): # compute the normal-type of a tuplet (only needed for Finale)
@@ -1074,7 +1159,7 @@ class MusicXml:
                 addElemT (tmod, 'normal-type', s.ntype, lev + 1)
         s.tupnts = []                   # reset the tuplet buffer
 
-    def doNotations (s, n, decos, ptup, alter, tupnotation, tstop, nt, lev):
+    def doNotations (s, n, decos, decosPos, ptup, alter, tupnotation, tstop, nt, lev):
         slurs = getattr (n, 'slurs', 0) # slur ends
         pts = getattr (n, 'pitches', [])            # all chord notes available in the first note
         ov = s.overlayVnum                          # current overlay voice number (0 for the main voice)
@@ -1087,7 +1172,7 @@ class MusicXml:
             if getattr (n, 'chord', 0): continue    # skip chord notes
             if pt == ptup: continue                 # skip correct single note tie
             if getattr (n, 'grace', 0): continue    # skip grace notes
-            info ('tie between different pitches: %s%s converted to slur' % pt)
+            reportAtSrc (n, 'tie between different pitches: %s%s converted to slur' % pt)
             del s.ties [pt]                         # remove the note from pending ties
             e = [t for t in ntelm.findall ('tie') if t.get ('type') == 'start'][0]  # get the tie start element
             ntelm.remove (e)                        # delete start tie element
@@ -1145,7 +1230,7 @@ class MusicXml:
                 addElem (nots, ntn, lev + 1)
             if arts:        # do only note articulations and collect staff annotations in xmldecos
                 rest = s.doArticulations (nt, nots, arts, lev + 1)
-                if rest: info ('unhandled note decorations: %s' % rest)
+                if rest: reportAtPos (decosPos [0], decosPos [1], decosPos [2], 'unhandled note decorations: %s' % rest)
         if slurs:           # these are only slur endings
             for d in slurs.t:           # slurs to be closed on this note
                 if not s.slurstack.get (ov, 0): break    # no more open old slurs for this (overlay) voice
@@ -1243,7 +1328,7 @@ class MusicXml:
                     pext.set ('type', 'continue')
                 ext = E.Element ('extend', type = 'stop')   # always stop on current extend
                 addElem (lyrel, ext, lev + 1)
-            elif lyrobj.name == 'ext': info ('lyric extend error'); continue
+            elif lyrobj.name == 'ext': reportAtLyric (lyrobj, 'lyric extend error'); continue
             else: continue          # skip other lyric elements or errors
             addElem (nt, lyrel, lev)
             s.prevLyric [i] = lyrel # for extension (melisma) on the next note
@@ -1280,8 +1365,9 @@ class MusicXml:
                 pbm.text = 'end'
         s.prevNote = None
 
-    def staffDecos (s, decos, maat, lev):
-        gstaff = s.gStaffNums.get (s.vid, 0)        # staff number of the current voice        
+    def staffDecos (s, decoObj, maat, lev):
+        gstaff = s.gStaffNums.get (s.vid, 0)        # staff number of the current voice
+        decos = decoObj.t
         for d in decos:
             d = s.usrSyms.get (d, d).strip ('!+')   # try to replace user defined symbol
             if d in s.dynaMap:
@@ -1315,7 +1401,10 @@ class MusicXml:
                 s.tmnum, s.tmden, s.ntup, s.trem, s.intrem = 2, 1, 2, len (d) - 1, 1
             elif d in ['/','//','///']: s.trem = - len (d)  # single note tremolo
             elif d == 'rbstop': s.rbStop = 1;   # sluit een open volta aan het eind van de maat
-            else: s.nextdecos.append (d)    # keep annotation for the next note
+            else:
+                s.nextdecos.append (d)      # keep annotation for the next note
+                if s.nextdecosPos is None:  # remember where this (first pending) deco group came from
+                    s.nextdecosPos = (getattr (decoObj, 'srcline', None), getattr (decoObj, 'srcexcerpt', ''), getattr (decoObj, 'srccaret', ''))
 
     def doFields (s, maat, fieldmap, lev):
         def instDir (midelm, midnum, dirtxt):
@@ -1642,7 +1731,7 @@ class MusicXml:
                 if nts == 0: nts = n
                 s.tmnum, s.tmden, s.ntup = n, into, nts
             elif x.name == 'deco':
-                s.staffDecos (x.t, maat, lev + 1)   # output staff decos, postpone note decos to next note
+                s.staffDecos (x, maat, lev + 1)   # output staff decos, postpone note decos to next note
             elif x.name == 'text':
                 pos, text = x.t[:2]
                 place = 'above' if pos == '^' else 'below'
@@ -1988,14 +2077,17 @@ class MusicXml:
         ps = []
         try:
             lbrk_insert = 0 if re.search (r'I:linebreak\s*([!$]|none)|I:continueall\s*(1|true)', header) else bOpt
+            global curVoiceRows
+            curVoiceRows = []        # header text has no per-voice line tracking; avoid stale data from a previous voice
             hs = abc_header.parseString (header) if header else ''
-            for id, voice in voices:
+            for id, voice, voiceRows in voices:
                 if lbrk_insert:                                 # insert linebreak at EOL
                     r1 = re.compile (r'\[[wA-Z]:[^]]*\]')       # inline field
                     has_abc = lambda x: r1.sub ('', x).strip () # empty if line only contains inline fields
                     voice = '\n'.join ([balk.rstrip ('$!') + '$' if has_abc (balk) else balk for balk in voice.splitlines ()])
                 prevLeftBar = None      # previous voice ended with a left-bar symbol (double repeat)
                 s.orderChords = s.fOpt and ('tab' in voice [:200] or [x for x in hs if x.t[0] == 'K' and 'tab' in x.t[1]])
+                curVoiceRows = voiceRows        # consulted by noteActn/restActn via srcContext()
                 vce = abc_voice.parseString (voice).asList ()
                 lyr_notes = []          # remember notes between lyric blocks
                 for m in vce:           # all measures
