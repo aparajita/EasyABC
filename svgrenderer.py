@@ -309,8 +309,6 @@ class SvgRenderer(object):
         self.float_px_re = re.compile(r'^(\d*(?:\.\d+))?px$')
         self.font_re = re.compile(r'\bfont:(?:(?P<typeface>[a-z-]+) )?(?P<size>-?\d+(?:\.\d+)?(?:px|pt|em|ex|in|cm|mm|pc|%)?) (?P<family>[-\w]+)')
         self.zoom = 1.0
-        self.min_width = 1
-        self.min_height = 1
         self.empty_page = SvgPage(self, None)
         self.buffer = None
         # 1.3.6.2 [JWdJ] 2015-02-12 Added voicecolor
@@ -322,10 +320,6 @@ class SvgRenderer(object):
         self.highlight_follow = False
         self.default_transform = None
         #self.update_buffer(self.empty_page)
-        if wx.Platform == "__WXMAC__":
-            self.transform_point = self.transform_point_osx
-        else:
-            self.transform_point = self.transform_point_normal
 
     def destroy(self):
         if self.renderer:
@@ -340,27 +334,9 @@ class SvgRenderer(object):
         self.default_transform = None
 
     def update_buffer(self, page):
-        width, height = max(self.min_width, page.svg_width * self.zoom), \
-                        max(self.min_height, page.svg_height * self.zoom + 100)
-        width, height = int(width), int(height)
-        #if self.buffer:
-        #    print (self.buffer.GetWidth(), self.buffer.GetHeight()), '->'
-        #print (width, height), '->'
-        if self.buffer:
-            # if size has decreased by less than 250 pixels, then don't change size
-            if 0 <= self.buffer.GetWidth() - width < 250:
-                width = self.buffer.GetWidth()
-            if 0 <= self.buffer.GetHeight() - height < 250:
-                height = self.buffer.GetHeight()
-            # if size has increased, then resize and add some extra pixels so that we won't
-            # have to resize quickly again if the note image grows just slightly
-            if self.buffer.GetWidth() < width:
-                width += 250
-            if self.buffer.GetHeight() < height:
-                height += 250
-
+        """Provide a bitmap the size of the zoomed page, for the callers that draw a page off screen."""
+        width, height = int(page.svg_width * self.zoom), int(page.svg_height * self.zoom)
         if self.buffer is None or width != self.buffer.GetWidth() or height != self.buffer.GetHeight():
-            #print 'create new buffer!!!!!!!!', (width, height)
             self.buffer = wx_bitmap(width, height, 32)
 
     def svg_to_page(self, svg):
@@ -399,18 +375,14 @@ class SvgRenderer(object):
         if self.buffer:
             self.clear_to_paper(wx.MemoryDC(self.buffer))
 
-    def draw_notes(self, page, note_indices, highlight, dc=None, highlight_follow=False ):
+    def draw_notes(self, page, note_indices, highlight, dc, highlight_follow=False ):
         if not page.note_draw_info or not note_indices:
             return
-        dc = dc or wx.MemoryDC(self.buffer)
         gc = wx.GraphicsContext.Create(dc)
-        transform = gc.SetTransform
-        if wx.Platform == "__WXGTK__":
-            transform = gc.ConcatTransform
         gc.PushState()
         for element_id, current_color, matrix in [page.note_draw_info[i] for i in note_indices]:
             gc.PushState()
-            transform(gc.CreateMatrix(*matrix))
+            gc.ConcatTransform(gc.CreateMatrix(*matrix))
             self.draw_svg_element(page, gc, page.id_to_element[element_id], highlight, current_color, {}, highlight_follow)
             gc.PopState()
         gc.PopState()
@@ -772,7 +744,7 @@ class SvgRenderer(object):
             dc.Translate(x, y)
             self.draw_svg_element(page, dc, page.id_to_element[element_id], highlight, current_color, current_style.copy(), highlight_follow)
             if desc:
-                page.note_draw_info.append((element_id, current_color, dc.GetTransform().Get()))
+                page.note_draw_info.append((element_id, current_color, self.page_space_matrix(dc).Get()))
             dc.PopState()
 
         #FAU: Attribut ellipse is used for note heads
@@ -896,16 +868,15 @@ class SvgRenderer(object):
         if transform:
             dc.PopState()
 
-    def transform_point_normal(self, dc, x, y):
-        matrix = self.renderer.CreateMatrix(*dc.GetTransform().Get())
-        return matrix.TransformPoint(x, y)
+    def page_space_matrix(self, gc):
+        """The transform of what is being drawn into page space, with the target's own origin, scrolling and axis flipping divided out."""
+        matrix = self.renderer.CreateMatrix(*self.default_transform.Get())
+        matrix.Invert()
+        matrix.Concat(gc.GetTransform())
+        return matrix
 
-    def transform_point_osx(self, dc, x, y):
-        a, b, c, d, tx, ty = dc.GetTransform().Get()
-        _, _, _, def_d, _, def_ty = self.default_transform.Get()
-        matrix = self.renderer.CreateMatrix(a, b, c, d * def_d, tx, def_ty - ty) # last param could also be: def_ty + ty * def_d
-        new_xy = matrix.TransformPoint(x, y)
-        return new_xy
+    def transform_point(self, gc, x, y):
+        return self.page_space_matrix(gc).TransformPoint(x, y)
 
 class MyApp(wx.App):
     def OnInit(self):

@@ -64,7 +64,7 @@ from error_marks import ErrorMarks
 from music_score_panel import MusicScorePanel
 from svgrenderer import SvgRenderer
 from tune_document import TuneDocument, TuneList
-from score_view import ScoreView
+from score_view import ScoreView, DEFAULT_ZOOM
 from playback_controller import PlaybackController
 from typing_assistant import TypingAssistant
 from find_replace import FindReplace
@@ -354,7 +354,9 @@ class MainFrame(wx.Frame):
         self.editor.Bind(wx.EVT_KEY_DOWN, self.OnUpdate)
         self.music_pane.Bind(wx.EVT_KEY_DOWN, self.OnUpdate)
         self.tune_list.Bind(wx.EVT_KEY_DOWN, self.OnUpdate)
-        self.music_pane.Bind(wx.EVT_MOUSEWHEEL, self.OnMouseWheel)
+        self.music_pane.Bind(wx.EVT_MOUSEWHEEL, self.score_view.OnMusicPaneMouseWheel)
+        if self.music_pane.EnableTouchEvents(wx.TOUCH_ZOOM_GESTURE):
+            self.music_pane.Bind(wx.EVT_GESTURE_ZOOM, self.score_view.OnMusicPaneZoomGesture)
 
         self.tune_list_controller.UpdateTuneList()
         self.tune_list_controller.update_multi_tunes_menu_items()
@@ -442,22 +444,6 @@ class MainFrame(wx.Frame):
         self.music_pane.SetBackgroundColour(wx.Colour(self.renderer.paper_color))
         self.music_pane.redraw()
         self.Refresh()
-
-    def OnMouseWheel(self, evt):
-        if evt.ControlDown() or evt.CmdDown():
-            value = self.zoom_slider.GetValue()
-            if evt.GetWheelRotation() > 1:
-                value += 50
-            else:
-                value -= 50
-            if value < self.zoom_slider.GetMin():
-                value = self.zoom_slider.GetMin()
-            if value > self.zoom_slider.GetMax():
-                value = self.zoom_slider.GetMax()
-            self.zoom_slider.SetValue(value)
-            self.score_view.OnZoomSlider(None)
-        else:
-            evt.Skip()
 
     # 1.3.6 [SS] 2014-11-21
     def OnSearchDirectories(self, evt):
@@ -1047,7 +1033,7 @@ class MainFrame(wx.Frame):
             if perspective:
                 self.manager.LoadPerspective(perspective)
         self.bpm_slider.SetValue(0)
-        self.zoom_slider.SetValue(settings.get('score_zoom', 1000))
+        self.zoom_slider.SetValue(settings.get('score_zoom', DEFAULT_ZOOM))
         self.mni_auto_refresh.Check(settings.get('auto_refresh', True))
         self.mni_reduced_margins.Check(settings.get('reduced_margins', True))
         self.mni_TA_active.Check(settings.get('typing_assistance_active', True))

@@ -20,6 +20,7 @@ import wx.lib.platebtn as platebtn
 from wx import GetTranslation as _
 
 import printing
+from score_view import DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM
 from wxhelper import create_menu, create_menu_bar, append_menu_item, append_submenu, delete_menuitem
 
 
@@ -50,6 +51,13 @@ def setup_menus(frame):
     append_menu_item(view_menu, _("&Change editor font..."), "", frame.OnChangeFont)
     append_menu_item(view_menu, _("&Use default editor font"), "", frame.OnUseDefaultFont)
     append_menu_item(view_menu, _("&Actual editor font size") + "\tCtrl+1", "", frame.OnActualFontSize)
+
+    preview_zoom_menu = create_menu([], parent=frame)
+    zoom_in_item = append_menu_item(preview_zoom_menu, _("Zoom &in") + "\tCtrl++", "", frame.score_view.OnZoomIn)
+    append_menu_item(preview_zoom_menu, _("Zoom &out") + "\tCtrl+-", "", frame.score_view.OnZoomOut)
+    append_menu_item(preview_zoom_menu, _("&Actual size") + "\tCtrl+0", "", frame.score_view.OnActualZoom)
+    append_submenu(view_menu, _("&Preview zoom"), preview_zoom_menu)
+
     view_menu.AppendSeparator()
     append_menu_item(view_menu, _("&Reset window layout to default"), "", frame.OnResetView)
     view_menu.AppendSeparator()
@@ -165,6 +173,11 @@ def setup_menus(frame):
 
     frame.SetMenuBar(menuBar)
 
+    # Ctrl/Cmd-+ needs Shift on most keyboard layouts, so accept the unshifted key as well.
+    frame.SetAcceleratorTable(wx.AcceleratorTable([
+        wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('='), zoom_in_item.GetId()),
+    ]))
+
     frame.Bind(wx.EVT_FIND, frame.find_replace.OnFindNext)
     frame.Bind(wx.EVT_FIND_NEXT, frame.find_replace.OnFindNext)
     frame.Bind(wx.EVT_FIND_REPLACE, frame.find_replace.OnFindReplace)
@@ -232,7 +245,7 @@ def setup_toolbar(frame):
 
     frame.toolbar.AddSeparator()
 
-    frame.zoom_slider = add_slider_to_toolbar(frame, _('Zoom'), False, value=1000, minValue=500, maxValue=3000, size=(130, -1))
+    frame.zoom_slider = add_slider_to_toolbar(frame, _('Zoom'), False, value=DEFAULT_ZOOM, minValue=MIN_ZOOM, maxValue=MAX_ZOOM, size=(130, -1))
 
     #wx_slider_set_tick_freq(frame.zoom_slider, 10)
     frame.Bind(wx.EVT_SLIDER, frame.score_view.OnZoomSlider, frame.zoom_slider)

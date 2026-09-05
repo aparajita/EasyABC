@@ -4,6 +4,10 @@ from wxhelper import wx_cursor, wx_colour
 from appearance import SCORE_DRAG_RECT_FILL, SCORE_DRAG_RECT_BORDER
 WX4 = wx.version().startswith('4')
 
+# The scrollable area starts out at least this large, in case no display reports its size.
+MIN_VIRTUAL_WIDTH = 400
+MIN_VIRTUAL_HEIGHT = 800
+
 class MusicScorePanel(wx.ScrolledWindow):
     def __init__(self, parent, renderer):
         wx.ScrolledWindow.__init__(self, parent, -1)#, style=wx.CLIP_CHILDREN )
@@ -18,14 +22,15 @@ class MusicScorePanel(wx.ScrolledWindow):
         self.current_page = renderer.empty_page
         ##self.selected_note_path_indices = set()
         ##self.selected_note_descriptions = set()
-        if wx.Platform == "__WXMSW__":
-            self.SetBackgroundStyle(wx.BG_STYLE_CUSTOM)
-        self.buffer_width = 400
-        self.buffer_height = 800
+        # OnPaint paints the paper itself, and wx.AutoBufferedPaintDC insists on being told so.
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        # Until a page is shown, the scrollable area covers the largest display.
+        self.default_virtual_width = MIN_VIRTUAL_WIDTH
+        self.default_virtual_height = MIN_VIRTUAL_HEIGHT
         for i in range(wx.Display.GetCount()):
             r = wx.Display(i).GetGeometry()
-            self.buffer_width = max(self.buffer_width, r.GetWidth())
-            self.buffer_height = max(self.buffer_height, r.GetHeight())
+            self.default_virtual_width = max(self.default_virtual_width, r.GetWidth())
+            self.default_virtual_height = max(self.default_virtual_height, r.GetHeight())
         self.Bind(wx.EVT_LEFT_DOWN, self.OnLeftButtonDown)
         self.Bind(wx.EVT_LEFT_UP, self.OnLeftButtonUp)
         self.Bind(wx.EVT_MOTION, self.OnMouseMotion)
@@ -37,19 +42,16 @@ class MusicScorePanel(wx.ScrolledWindow):
         self.drag_rect = None
         #FAU 20250120: mouse_select_ongoing positionned to avoid the race with event of selection change in TextCtrl
         self.mouse_select_ongoing = False
-        self.SetVirtualSize((self.buffer_width, self.buffer_height))
+        self.SetVirtualSize((self.default_virtual_width, self.default_virtual_height))
         self.SetScrollbars(20, 20, 50, 50)
         # 1.3.6.2 [JWdJ] 2015-02-14 hook events after initializing to prevent unnecessary redraws
-        self.need_redraw = True
         self.redrawing = False
-        # self.redraw_counter = 0
-        self.Bind(wx.EVT_SIZE, self.OnSize)
         self.Bind(wx.EVT_PAINT, self.OnPaint)
         self.highlighted_notes = None
         self.highlight_follow = False
 
     def reset_scrolling(self):
-        self.SetVirtualSize((self.buffer_width, self.buffer_height))
+        self.SetVirtualSize((self.default_virtual_width, self.default_virtual_height))
         self.SetScrollbars(20, 20, 50, 50)
 
     def get_xy_of_mouse_event(self, event):
@@ -193,35 +195,19 @@ class MusicScorePanel(wx.ScrolledWindow):
 ##            else:
 ##                self.SetCursor(self.cross_cursor)
 
-    def OnSize(self, evt):
-        w, h = self.GetClientSize()
-        # 1.3.6.2 [JWdJ] 2015-02-14 prevent unneeded redraws
-        if w != self.renderer.min_width or h != self.renderer.min_height:
-            self.renderer.min_width = w
-            self.renderer.min_height = h
-            if self.current_page != self.renderer.empty_page:
-                self.renderer.update_buffer(self.current_page)
-                self.redraw()
-
     def OnPaint(self, evt):
-        # The buffer already contains our drawing, so no need to
-        # do anything else but create the buffered DC.  When this
-        # method exits and dc is collected then the buffer will be
-        # blitted to the paint DC automagically
-        ##if wx.Platform == "__WXMSW__":
-        ##    dc = wx.BufferedPaintDC(self, self.renderer.buffer, wx.BUFFER_VIRTUAL_AREA)
-        ##else:
-        dc = wx.PaintDC(self)
+        # The score is drawn straight into the paint DC so that it uses the full
+        # resolution of the display. On platforms that do not paint into a buffer of
+        # their own, wx.AutoBufferedPaintDC supplies one to keep scrolling flicker-free.
+        dc = wx.AutoBufferedPaintDC(self)
+        # Clearing happens before PrepareDC so that the paper covers the whole window
+        # rather than the scrolled-away part of it.
+        self.renderer.clear_to_paper(dc)
         self.PrepareDC(dc)
         if self.current_page != self.renderer.empty_page:
-            if self.need_redraw:
-                self.Draw()
-                self.need_redraw = False
-            dc.DrawBitmap(self.renderer.buffer, 0, 0)
+            self.Draw(dc)
             if self.highlighted_notes:
                 self.renderer.draw_notes(page=self.current_page, note_indices=self.highlighted_notes, highlight=True, dc=dc, highlight_follow=self.highlight_follow)
-        else:
-            self.renderer.clear_to_paper(dc)
 
     def set_page(self, page):
         is_other_page = self.current_page and page and self.current_page.index != page.index
@@ -249,10 +235,6 @@ class MusicScorePanel(wx.ScrolledWindow):
         try:
             self.SetVirtualSize((w, h)) # triggers redraw again
             self.note_paths = []
-            self.need_redraw = True
-            self.renderer.update_buffer(page)
-            # self.redraw_counter += 1
-            # print 'need_redraw %d' % self.redraw_counter
             self.Refresh()
             self.Update()
         finally:
@@ -288,15 +270,12 @@ class MusicScorePanel(wx.ScrolledWindow):
             if not wx.Platform == "__WXMAC__":
                 self.highlighted_notes = None
 
-    def Draw(self):
-        dc = wx.BufferedDC(None, self.renderer.buffer)
+    def Draw(self, dc):
         if not WX4:
             dc.BeginDrawing()
         try:
-            self.renderer.clear_to_paper(dc)
             self.draw_drag_rect(dc)
-            if self.current_page != self.renderer.empty_page:
-                self.renderer.draw(page=self.current_page, clear_background=False, dc=dc)
+            self.renderer.draw(page=self.current_page, clear_background=False, dc=dc)
         except Exception as e:
             error_msg = traceback.format_exc()
             print('Warning: ' + error_msg)

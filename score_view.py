@@ -27,6 +27,18 @@ from background_threads import MusicUpdateThread
 from tune_model import text_to_lines, AbcTunes
 
 
+# The zoom slider works in per-mille of the physical score size.
+ZOOM_PER_MILLE = 1000.0
+MIN_ZOOM = 500
+MAX_ZOOM = 3000
+DEFAULT_ZOOM = 1000
+WHEEL_ZOOM_STEP = 50
+MENU_ZOOM_STEP = 100
+
+# abcm2ps sizes its SVG output in CSS pixels, which are 96 to the inch.
+SVG_PIXELS_PER_INCH = 96.0
+
+
 def parse_desc(desc):
     parts = desc.split()
     row, col = list(map(int, parts[1].split(':')))
@@ -43,6 +55,7 @@ class ScoreView(object):
         self.selected_note_descs = []
         self.selected_note_indices = []
         self.zoom_factor = 1.0
+        self.zoom_at_gesture_start = DEFAULT_ZOOM
         self.last_line_number_selected = -1
         self.queue_number_movement = 0
         self.queue_number_refresh_music = 0
@@ -170,20 +183,63 @@ class ScoreView(object):
         frame.manager.Update()
         frame.Refresh()
 
-    def OnZoomSlider(self, evt):
+    def set_zoom(self, zoom):
+        """Set the score zoom, in per-mille, clamped to the range the zoom slider offers."""
+        zoom = max(MIN_ZOOM, min(MAX_ZOOM, int(round(zoom))))
+        self.frame.zoom_slider.SetValue(zoom)
+        self.apply_zoom()
+
+    def screen_scale(self):
+        """The scale at which one SVG pixel covers one 96th of a physical inch on screen."""
+        ppi = wx.Display(self.frame.music_pane).GetRawPPI().width
+        if ppi <= 0:
+            return 1.0
+        return ppi / SVG_PIXELS_PER_INCH
+
+    def apply_zoom(self):
         frame = self.frame
         old_factor = self.zoom_factor
-        self.zoom_factor = float(frame.zoom_slider.GetValue()) / 1000
+        self.zoom_factor = frame.zoom_slider.GetValue() / ZOOM_PER_MILLE * self.screen_scale()
         if self.zoom_factor != old_factor:
             frame.renderer.zoom = self.zoom_factor # 1.3.6.2 [JWdJ] 2015-02
             frame.music_pane.redraw()
 
+    def zoom_by(self, step):
+        """Change the score zoom by the given number of per-mille."""
+        self.set_zoom(self.frame.zoom_slider.GetValue() + step)
+
+    def OnZoomSlider(self, evt):
+        self.apply_zoom()
+
+    def OnZoomIn(self, evt):
+        self.zoom_by(MENU_ZOOM_STEP)
+
+    def OnZoomOut(self, evt):
+        self.zoom_by(-MENU_ZOOM_STEP)
+
+    def OnActualZoom(self, evt):
+        self.set_zoom(DEFAULT_ZOOM)
+
     def OnZoomSliderClick(self, evt):
         if evt.ControlDown() or evt.ShiftDown():
-            self.frame.zoom_slider.SetValue(1000)
-            self.OnZoomSlider(None)
+            self.set_zoom(DEFAULT_ZOOM)
         else:
             evt.Skip()
+
+    def OnMusicPaneMouseWheel(self, evt):
+        if evt.ControlDown() or evt.CmdDown():
+            if evt.GetWheelRotation() > 0:
+                self.zoom_by(WHEEL_ZOOM_STEP)
+            else:
+                self.zoom_by(-WHEEL_ZOOM_STEP)
+        else:
+            evt.Skip()
+
+    def OnMusicPaneZoomGesture(self, evt):
+        # GetZoomFactor() is relative to the start of the gesture, not to the previous event.
+        if evt.IsGestureStart():
+            self.zoom_at_gesture_start = self.frame.zoom_slider.GetValue()
+        self.set_zoom(self.zoom_at_gesture_start * evt.GetZoomFactor())
 
     def scroll_to_notes(self, page, indices):
         if not indices:
