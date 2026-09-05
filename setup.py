@@ -53,7 +53,7 @@ if sys.platform == "darwin":
                                                             }]
                                    }
                          }
-    data_files = [('.', ['reference.txt', 'gpl-license.txt']),
+    data_files = [('.', ['reference.txt', 'gpl-license.txt', 'third-party-licenses.txt']),
                   ('bin', ['bin/abc2midi', 'bin/abcm2ps', 'bin/abc2abc', 'bin/midi2abc']),
                   ('img', glob.glob(os.path.join('img', '*.*'))),
                   ('sound', glob.glob(os.path.join('sound', '*.*'))),
@@ -101,6 +101,7 @@ else:
                      'bin\\FluidSynth\\X86\\libinstpatch-2.dll',
                      'reference.txt',
                      'gpl-license.txt',
+                     'third-party-licenses.txt',
                      ]
 
     # 1.3.7.1 [JWDJ] to maintain the folder structure make a tuple with same source and target path

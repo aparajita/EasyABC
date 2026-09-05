@@ -27,6 +27,37 @@ from tune_model import text_to_lines
 
 all_notes = "C,, D,, E,, F,, G,, A,, B,, C, D, E, F, G, A, B, C D E F G A B c d e f g a b c' d' e' f' g' a' b' c'' d'' e'' f'' g'' a'' b''".split()
 
+# Decorations abcm2ps has no glyph for, defined for it in the ABC handed to it.
+#
+# %%deco takes name, drawing function, PostScript routine, height, and the widths it
+# claims left and right of its anchor. Function 1 anchors at the notehead's vertical
+# centre, five points left of the head, so the routine shifts right to clear the head and
+# an up-stem and leave a gap of roughly two fifths of a staff space after them. An
+# unqualified %%beginps block reaches SVG and PostScript output alike, so the score panel,
+# printing and PS export all draw the same outline.
+#
+# The outline is brassFallLipShort from Bravura, Copyright (c) Steinberg Media
+# Technologies GmbH, licensed under the SIL Open Font License 1.1; the notice and the
+# license are in third-party-licenses.txt. Bravura draws on a 1000-unit em with 250 units
+# to the staff space, and abcm2ps puts 6 points there, hence the .024 scale. Both spaces
+# run y upwards, so the outline needs no reflection.
+abcm2ps_decoration_definitions = '''%%deco fall 1 fall 9 0 19
+%%beginps
+/fall{
+    gsave T 11.5 0 T .024 dup scale
+    15 42 M
+    -12 0 -14 -6 -14 -18 RC
+    0 -20 RL
+    1 -32 6 -34 17 -39 RC
+    1 0 3 0 4 -1 RC
+    37 -15 205 -41 239 -290 RC
+    2 -12 8 -19 17 -19 RC
+    8 0 15 4 15 21 RC
+    0 194 -170 352 -271 366 RC
+    fill grestore}!
+%%endps
+'''
+
 
 def str2fraction(s):
     parts = [int(x.strip()) for x in s.split('/')]
@@ -276,7 +307,7 @@ def process_abc_code(settings, abc_code, header, minimal_processing=False, tempo
         extra_lines += '%%pageheight ' + settings['abcm2ps_pageheight'] + 'cm \n'
 
         extra_lines += '%%scale ' + settings['abcm2ps_scale'] + ' \n'
-    parts = []
+    parts = [abcm2ps_decoration_definitions]
     if landscape and not minimal_processing:
         parts.append('%%landscape 1\n')
     if header:

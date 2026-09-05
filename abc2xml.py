@@ -893,7 +893,8 @@ class MusicXml:
             'vivacissimo':220, 'andante':88, 'prestissimo':240, 'andantino':96}
     wedgeMap = {'>(':1, '>)':1, '<(':1,'<)':1,'crescendo(':1,'crescendo)':1,'diminuendo(':1,'diminuendo)':1}
     artMap = {'.':'staccato','>':'accent','accent':'accent','wedge':'staccatissimo','tenuto':'tenuto',
-              'breath':'breath-mark','marcato':'strong-accent','^':'strong-accent','slide':'scoop'}
+              'breath':'breath-mark','marcato':'strong-accent','^':'strong-accent','slide':'scoop',
+              'fall':'falloff'}     # non-standard, accepted for the jazz falloff
     ornMap = {'trill':'trill-mark','T':'trill-mark','turn':'turn','uppermordent':'inverted-mordent','lowermordent':'mordent',
               'pralltriller':'inverted-mordent','mordent':'mordent','turn':'turn','invertedturn':'inverted-turn'}
     tecMap = {'upbow':'up-bow', 'downbow':'down-bow', 'plus':'stopped','open':'open-string','snap':'snap-pizzicato',

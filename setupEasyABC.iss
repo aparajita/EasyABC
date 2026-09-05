@@ -57,6 +57,7 @@ Type: filesandordirs; Name: "{app}\Microsoft.VC90.CRT"
 [Files]
 Source: "{#MyBuildFolder}\easy_abc.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyBuildFolder}\gpl-license.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#MyBuildFolder}\third-party-licenses.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyBuildFolder}\reference.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyBuildFolder}\python3.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyBuildFolder}\python38.dll"; DestDir: "{app}"; Flags: ignoreversion
