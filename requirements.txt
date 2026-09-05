@@ -3,3 +3,6 @@ pyparsing
 
 # Build only (macOS app bundle)
 py2app
+
+# Development only
+pytest

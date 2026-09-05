@@ -1,4 +1,5 @@
 import wx
+import wx.stc as stc
 
 WX4 = wx.version().startswith('4')
 
@@ -141,3 +142,26 @@ def wx_dirdialog(parent, message, path):
             return dlg.GetPath()
     finally:
         dlg.Destroy() # 1.3.6.3 [JWDJ] 2015-04-21 always clean up dialog window
+
+
+def apply_editor_appearance(text_ctrl, appearance, style_color, face, size):
+    """Give a Scintilla control the base colours of the current appearance.
+
+    ``style_color`` maps a palette key to the colour to use for it.
+    The default style must carry the background before ``StyleClearAll`` copies it
+    into every other style, so the caller adds its own styles after this returns.
+    """
+    background = appearance.html(appearance.editor_background)
+    text_ctrl.StyleSetSpec(stc.STC_STYLE_DEFAULT, "fore:%s,back:%s,face:%s,size:%d" % (style_color('style_default_color'), background, face, size))
+    text_ctrl.StyleClearAll()
+    text_ctrl.StyleSetSpec(stc.STC_STYLE_LINENUMBER, "fore:%s,back:%s" % (appearance.html(appearance.text), appearance.html(appearance.window_background)))
+    text_ctrl.SetCaretForeground(appearance.text)
+    text_ctrl.SetSelBackground(True, wx.Colour(style_color('style_selection_color')))
+
+
+def get_normal_fontsize():
+    if wx.Platform == "__WXMSW__":
+        font_size = 10
+    else:
+        font_size = 14
+    return font_size

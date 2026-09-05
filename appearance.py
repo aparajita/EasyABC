@@ -52,6 +52,7 @@ LIGHT_STYLE_PALETTE = {
     'style_ornamentplus_color': '#4876D6',
     'style_ornamentexcl_color': '#4876D6',
     'style_error_color': '#DE3D3B',
+    'style_warning_color': '#B36A00',
     'style_selection_color': '#2E78DB',
     'score_paper': SCORE_COLOR,
 }
@@ -74,6 +75,7 @@ DARK_STYLE_PALETTE = {
     'style_ornamentplus_color': '#82AAFF',
     'style_ornamentexcl_color': '#82AAFF',
     'style_error_color': '#EF5350',
+    'style_warning_color': '#E5A100',
     'style_selection_color': '#2E78DB',
     'score_paper': SCORE_COLOR,
 }

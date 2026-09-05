@@ -7,8 +7,15 @@ import wx.stc as stc
 from abc_parser import Severity
 from appearance import current_appearance, ERROR_ICON, WARNING_ICON, ICON_GLYPH
 
-# The indicator number the editor uses for parser diagnostics.
+# The indicator numbers the editor uses for parser diagnostics, one per severity
+# so errors and warnings can carry different squiggle colours.
 ERROR_INDICATOR = stc.STC_INDIC_CONTAINER
+WARNING_INDICATOR = stc.STC_INDIC_CONTAINER + 1
+
+SEVERITY_INDICATOR = {
+    Severity.ERROR: ERROR_INDICATOR,
+    Severity.WARNING: WARNING_INDICATOR,
+}
 
 # How long the mouse must rest over a mark before its explanation appears.
 HOVER_DELAY_MS = 500
@@ -77,14 +84,16 @@ class ErrorMarks(object):
         editor.Bind(stc.EVT_STC_DWELLSTART, self.on_dwell_start)
         editor.Bind(stc.EVT_STC_DWELLEND, self.on_dwell_end)
 
-    def set_color(self, color):
-        self.editor.IndicatorSetStyle(ERROR_INDICATOR, stc.STC_INDIC_SQUIGGLE)
-        self.editor.IndicatorSetForeground(ERROR_INDICATOR, wx.Colour(color))
+    def set_colors(self, error_color, warning_color):
+        for indicator, color in ((ERROR_INDICATOR, error_color), (WARNING_INDICATOR, warning_color)):
+            self.editor.IndicatorSetStyle(indicator, stc.STC_INDIC_SQUIGGLE)
+            self.editor.IndicatorSetForeground(indicator, wx.Colour(color))
 
     def clear(self):
         editor = self.editor
-        editor.SetIndicatorCurrent(ERROR_INDICATOR)
-        editor.IndicatorClearRange(0, editor.GetLength())
+        for indicator in SEVERITY_INDICATOR.values():
+            editor.SetIndicatorCurrent(indicator)
+            editor.IndicatorClearRange(0, editor.GetLength())
         self.spans = []
         self.tip.Hide()
 
@@ -102,6 +111,7 @@ class ErrorMarks(object):
                 continue
             offset_in_line, length = diagnostic_span(editor.GetLine(editor_line), position)
             start = editor.PositionFromLine(editor_line) + offset_in_line
+            editor.SetIndicatorCurrent(SEVERITY_INDICATOR[diagnostic.severity])
             editor.IndicatorFillRange(start, length)
             self.spans.append((start, start + length, diagnostic))
 
