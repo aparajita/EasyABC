@@ -301,6 +301,7 @@ class MainFrame(wx.Frame):
         self.manager.Bind(aui.EVT_AUI_PANE_MAXIMIZE, self.__onPaneMaximize)
         self.manager.Bind(aui.EVT_AUI_PANE_RESTORE, self.__onPaneRestore)
 
+        self.ApplyDockArtAppearance()
         self.manager.Update()
 
         self.search_files_panel = None
@@ -433,9 +434,22 @@ class MainFrame(wx.Frame):
         """
         self.InitEditorFromSettings()
         self.ApplyScorePaper()
+        self.ApplyDockArtAppearance()
+        self.manager.Update()
         tune_frame = wx.FindWindowByName('abctuneframe')
         if tune_frame is not None:
             tune_frame.ApplyAppearance()
+
+    def ApplyDockArtAppearance(self):
+        """Colour the pane captions ("Tune list", "ABC code", ...) for the current appearance."""
+        appearance = current_appearance()
+        art = self.manager.GetArtProvider()
+        art.SetColour(aui.AUI_DOCKART_ACTIVE_CAPTION_COLOUR, appearance.pane_caption_background)
+        art.SetColour(aui.AUI_DOCKART_ACTIVE_CAPTION_GRADIENT_COLOUR, appearance.pane_caption_background)
+        art.SetColour(aui.AUI_DOCKART_ACTIVE_CAPTION_TEXT_COLOUR, appearance.pane_caption_text)
+        art.SetColour(aui.AUI_DOCKART_INACTIVE_CAPTION_COLOUR, appearance.pane_inactive_caption_background)
+        art.SetColour(aui.AUI_DOCKART_INACTIVE_CAPTION_GRADIENT_COLOUR, appearance.pane_inactive_caption_background)
+        art.SetColour(aui.AUI_DOCKART_INACTIVE_CAPTION_TEXT_COLOUR, appearance.pane_inactive_caption_text)
 
     def score_paper_color(self):
         return current_appearance().style_color(self.settings, 'score_paper')

@@ -94,12 +94,26 @@ class Appearance:
         self.tooltip_background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_INFOBK)
         self.tooltip_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_INFOTEXT)
         self.tooltip_border = wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT)
+        self.pane_caption_background = self._blend(
+            wx.SystemSettings.GetColour(wx.SYS_COLOUR_ACTIVECAPTION), self.window_background)
+        self.pane_caption_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_CAPTIONTEXT)
+        self.pane_inactive_caption_background = self._blend(
+            wx.SystemSettings.GetColour(wx.SYS_COLOUR_INACTIVECAPTION), self.window_background)
+        self.pane_inactive_caption_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_INACTIVECAPTIONTEXT)
         if self.is_dark:
             self.style_palette = DARK_STYLE_PALETTE
             self._settings_key_prefix = DARK_SETTINGS_KEY_PREFIX
         else:
             self.style_palette = LIGHT_STYLE_PALETTE
             self._settings_key_prefix = ''
+
+    @staticmethod
+    def _blend(colour, towards, weight=0.5):
+        """``colour`` mixed with ``towards`` by ``weight`` (0 keeps ``colour``, 1 becomes ``towards``)."""
+        return wx.Colour(
+            int(colour.Red() + (towards.Red() - colour.Red()) * weight),
+            int(colour.Green() + (towards.Green() - colour.Green()) * weight),
+            int(colour.Blue() + (towards.Blue() - colour.Blue()) * weight))
 
     def style_settings_key(self, palette_key):
         """The settings key holding the user's colour for ``palette_key`` under this appearance."""
