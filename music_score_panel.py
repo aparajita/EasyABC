@@ -58,6 +58,11 @@ class MusicScorePanel(wx.ScrolledWindow):
         x, y = self.CalcUnscrolledPosition(event.GetX(), event.GetY())
         return x, y
 
+    def to_page_xy(self, x, y):
+        """Window coordinates as unzoomed page coordinates, which is what a page's notes are in."""
+        z = self.renderer.zoom
+        return x / z, y / z
+
     # def get_path_under_mouse(self, event):
     #     x, y = self.get_xy_of_mouse_event(event)
     #     pt = wx.Point2D(x, y)
@@ -102,7 +107,7 @@ class MusicScorePanel(wx.ScrolledWindow):
             page = self.current_page
             old_selection = page.selected_indices.copy()
             page.clear_note_selection()
-            x, y = self.get_xy_of_mouse_event(event)
+            x, y = self.to_page_xy(*self.get_xy_of_mouse_event(event))
             note_index = page.hit_test(x, y)
             if note_index is None:
                 close_note_index = page.hit_test(x, y, return_closest_hit=True)
@@ -158,14 +163,17 @@ class MusicScorePanel(wx.ScrolledWindow):
             if self.drag_start_x is not None and self.drag_start_y is not None:
                 x, y = self.get_xy_of_mouse_event(event)
                 self.drag_rect = (min(self.drag_start_x, x), min(self.drag_start_y, y), abs(self.drag_start_x-x), abs(self.drag_start_y-y))
-                rect = wx.Rect(*map(int, self.drag_rect))
+                # the drag rect is drawn in window coordinates, but selects notes in page coordinates
+                page_x, page_y = self.to_page_xy(self.drag_rect[0], self.drag_rect[1])
+                page_width, page_height = self.to_page_xy(self.drag_rect[2], self.drag_rect[3])
+                rect = wx.Rect(*map(int, (page_x, page_y, page_width, page_height)))
                 old_selection = page.selected_indices.copy()
                 page.select_notes(rect)
                 if old_selection != page.selected_indices and self.OnNoteSelectionChangedDesc:
                     self.OnNoteSelectionChangedDesc(page.selected_indices)
                 self.redraw()
         else:
-            x, y = self.get_xy_of_mouse_event(event)
+            x, y = self.to_page_xy(*self.get_xy_of_mouse_event(event))
             if page.hit_test(x, y) is not None:
                 self.SetCursor(self.pointer_cursor)
             else:
@@ -218,7 +226,6 @@ class MusicScorePanel(wx.ScrolledWindow):
 
     def clear(self):
         self.current_page = self.renderer.empty_page
-        self.renderer.clear()
         self.Refresh()
 
     def redraw(self):

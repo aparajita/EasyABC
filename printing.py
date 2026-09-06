@@ -21,6 +21,7 @@ from abc_tools import AbcToSvg
 from appearance import PRINT_INK
 from constants import WX4
 from svgrenderer import SvgRenderer
+from wxhelper import wx_bitmap
 
 _print_data = None
 
@@ -191,16 +192,16 @@ class MusicPrintout(wx.Printout):
                 # special case for windows since it doesn't support creating a GraphicsContext from a PrinterDC:
                 dc.SetUserScale(actualScale/self.zoom, actualScale/self.zoom)
                 renderer.zoom = self.zoom
-                renderer.update_buffer(page)
                 if self.painted_on_screen:
-                    renderer.draw(page)
-                    dc.DrawBitmap(renderer.buffer, 0, 0)
+                    # a PrinterDC that cannot back a GraphicsContext gets the page as a bitmap
+                    bitmap = wx_bitmap(int(page.svg_width * self.zoom), int(page.svg_height * self.zoom), 32)
+                    renderer.draw(page, wx.MemoryDC(bitmap))
+                    dc.DrawBitmap(bitmap, 0, 0)
                 else:
-                    renderer.draw(page, dc=dc)
+                    renderer.draw(page, dc)
             else:
                 renderer.zoom = 1.0
-                renderer.update_buffer(page)
-                renderer.draw(page, dc=dc)
+                renderer.draw(page, dc)
         finally:
             renderer.destroy()
         return True

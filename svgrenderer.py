@@ -6,17 +6,14 @@
 # of easy_abc.py # during initialization. The object for SvgPage, called page,
 # is created inside SvgRenderer.
 #
-# There are two indirect calls to SvgRenderer from easy_abc.py. The function
-# svg_to_page is called from render_page in UpdateMusicPane in easy_abc.py
-# This puts the contents of the svg files into a python dictionary called
-# self.page[page_index] and returns it to the variable page in UpdateMusicPane
-# in easy_abc.py. The second call to render.draw() is called indirectly from
-# MusicScorePanel when an EVT_PAINT event is processed.
+# SvgRenderer is reached in two ways. svg_to_page is called from SvgTune.render_page
+# in tune_model.py, which caches the page it returns. SvgRenderer.draw is called from
+# MusicScorePanel when an EVT_PAINT event is processed, and from printing.py.
 #
 # page.notes[] (also called self.notes[] in  SvgPage) is used to match
-# the notes in the music pane with the text in the abc file. The
-# contents of page.notes[] are filled while the module is drawing
-# each element on the bitmap using the method draw_svg_element.
+# the notes in the music pane with the text in the abc file. It is filled
+# while parsing the svg, and holds unzoomed page coordinates, so a page can
+# be hit-tested and its notes selected whether or not it has ever been drawn.
 
 # 1.3.6.3 [JWDJ] Fixed drawing problems with abcm2ps version 8.7.6
 
@@ -27,9 +24,7 @@ from collections import defaultdict, deque, namedtuple
 import re
 import wx
 from math import hypot, radians, sqrt, pi
-import traceback
-from datetime import datetime
-from wxhelper import wx_colour, wx_bitmap
+from wxhelper import wx_colour
 from appearance import PRINT_PAPER
 WX4 =wx.version().startswith('4')
 WX41 = WX4 and not wx.version().startswith('4.0')
@@ -98,6 +93,30 @@ class SvgElement(object):
 
 NoteData = namedtuple('NoteData', 'note_type row col x y width height')
 
+
+class MatrixTransformTarget(object):
+    """A wx.GraphicsMatrix behind the part of the wx.GraphicsContext interface that
+       do_transform uses, so that parsing and drawing apply svg transforms identically."""
+    def __init__(self, graphics_renderer, matrix):
+        self.graphics_renderer = graphics_renderer
+        self.matrix = matrix
+
+    def Translate(self, dx, dy):
+        self.matrix.Translate(dx, dy)
+
+    def Rotate(self, angle):
+        self.matrix.Rotate(angle)
+
+    def Scale(self, x_scale, y_scale):
+        self.matrix.Scale(x_scale, y_scale)
+
+    def CreateMatrix(self, *args):
+        return self.graphics_renderer.CreateMatrix(*args)
+
+    def ConcatTransform(self, matrix):
+        self.matrix.Concat(matrix)
+
+
 class SvgPage(object):
     def __init__(self, renderer, svg):
         self.renderer = renderer
@@ -136,13 +155,11 @@ class SvgPage(object):
             self.id_to_element = {}
             self.class_attributes = {}
             self.notes_in_row = defaultdict(list) # 1.3.6.3 [JWDJ] contains for each row of abctext note information
-            children = [c for c in self.parse_elements(svg, {}) if c.name not in ['defs', 'style']]
+            children = [c for c in self.parse_elements(svg, {}, self.renderer.renderer.CreateMatrix())
+                        if c.name not in ['defs', 'style']]
 
         self.indices_per_row_col = self.group_note_indices(self.notes_row_col)
         self.root_group = SvgElement('g', {}, children)
-
-    def clear_notes(self):
-        self.notes = []
 
     def group_note_indices(self, notes_row_col):
         indices_per_row_col = defaultdict(lambda: defaultdict(set))
@@ -182,7 +199,17 @@ class SvgPage(object):
             props = match.group('props')
             self.class_attributes[class_name] = parse_css_props(props)
 
-    def parse_elements(self, elements, parent_attributes):
+    def concat_transform(self, matrix, svg_transform):
+        """The page-space transform of an element carrying svg_transform, as a new matrix so
+           that siblings are unaffected. Returns matrix unchanged when there is nothing to apply."""
+        if not svg_transform:
+            return matrix
+        graphics_renderer = self.renderer.renderer
+        element_matrix = graphics_renderer.CreateMatrix(*matrix.Get())
+        self.renderer.do_transform(MatrixTransformTarget(graphics_renderer, element_matrix), svg_transform)
+        return element_matrix
+
+    def parse_elements(self, elements, parent_attributes, parent_matrix):
         result = []
         last_e_use = []
         elementnames_with_children = ['g', 'defs']
@@ -191,9 +218,12 @@ class SvgPage(object):
         for element in elements:
             name = element.tag.replace(svg_ns, '')
             attributes = self.parse_attributes(element, parent_attributes)
+            # draw_svg_element applies the element's own transform before it draws or recurses,
+            # so the same matrix positions the element's contents in page space.
+            matrix = self.concat_transform(parent_matrix, attributes.get('transform'))
             if name in elementnames_with_children:
                 # 1.3.6.3 [JWDJ] 2015-3 use list(element) because getchildren is deprecated
-                children = self.parse_elements(list(element), attributes)
+                children = self.parse_elements(list(element), attributes, matrix)
             else:
                 children = no_children
 
@@ -214,9 +244,10 @@ class SvgPage(object):
                 if note_type in ['N', 'R']: #, 'B']:  # if note/rest meta-data
                     last_row_col = (row, col)
                     desc = (note_type, row, col, x, y, width, height)
-                    for e_use in last_e_use:
+                    for e_use, use_x, use_y in last_e_use:
                         e_use.attributes['desc'] = desc
                         notes_row_col_append(last_row_col)
+                        self.notes.append((use_x, use_y, row, col, desc))
                 last_e_use = []
             else:
                 svg_element = SvgElement(name, attributes, children)
@@ -231,7 +262,8 @@ class SvgPage(object):
                 elif name == 'use': # 1.3.7.0 [JWDJ] 2016-01-05 all use-elements without id attribute belong to abc-note
                     href = element.get(href_tag)
                     if href not in ['#hl', '#hl1', '#mrest']: # leave out horizontal lines through notes above and below the stafflines (and measure rest too since abcm2ps does not add abc tag for measure rest)
-                        last_e_use.append(svg_element)
+                        use_x, use_y = float(attributes.get('x', 0)), float(attributes.get('y', 0))
+                        last_e_use.append((svg_element,) + matrix.TransformPoint(use_x, use_y))
                 result.append(svg_element)
         return result
 
@@ -286,9 +318,6 @@ class SvgPage(object):
     def get_indices_for_row_col(self, row, col):
         return self.indices_per_row_col[row][col]
 
-    def draw(self, clear_background=True, dc=None):
-        self.renderer.draw(self, clear_background, dc)
-
 
 class SvgRenderer(object):
     def __init__(self, can_draw_sharps_and_flats, highlight_color, highlight_follow_color = None, paper_color = PRINT_PAPER):
@@ -310,7 +339,6 @@ class SvgRenderer(object):
         self.font_re = re.compile(r'\bfont:(?:(?P<typeface>[a-z-]+) )?(?P<size>-?\d+(?:\.\d+)?(?:px|pt|em|ex|in|cm|mm|pc|%)?) (?P<family>[-\w]+)')
         self.zoom = 1.0
         self.empty_page = SvgPage(self, None)
-        self.buffer = None
         # 1.3.6.2 [JWdJ] 2015-02-12 Added voicecolor
         self.highlight_color = highlight_color
         if highlight_follow_color:
@@ -319,7 +347,6 @@ class SvgRenderer(object):
             self.highlight_follow_color = highlight_color
         self.highlight_follow = False
         self.default_transform = None
-        #self.update_buffer(self.empty_page)
 
     def destroy(self):
         if self.renderer:
@@ -328,41 +355,12 @@ class SvgRenderer(object):
             self.fill_cache = None
             self.stroke_cache = None
             self.transform_cache = None
-        if self.buffer:
-            self.buffer.Destroy()
-            self.buffer = None
         self.default_transform = None
 
-    def update_buffer(self, page):
-        """Provide a bitmap the size of the zoomed page, for the callers that draw a page off screen."""
-        width, height = int(page.svg_width * self.zoom), int(page.svg_height * self.zoom)
-        if self.buffer is None or width != self.buffer.GetWidth() or height != self.buffer.GetHeight():
-            self.buffer = wx_bitmap(width, height, 32)
-
     def svg_to_page(self, svg):
-        try:
-            svg_xml = ET.fromstring(svg) # parse xml
-            page = SvgPage(self, svg_xml)
-            return page
-        except:
-            # print('warning: %s' % traceback.print_exc())
-            self.clear()
-            raise
-
-    def set_svg(self, svg, dc=None):
-        try:
-            page = self.svg_to_page(svg)
-
-            self.start_time = datetime.now()
-            self.update_buffer(page)
-            self.draw(page, dc=dc)
-            #t = datetime.now() - self.start_time
-            ##if wx.Platform != "__WXGTK__":
-            ##    print 'draw_time    \t', t.seconds*1000 + t.microseconds/1000
-        except:
-            # print('warning: %s' % traceback.print_exc())
-            self.clear()
-            raise
+        svg_xml = ET.fromstring(svg) # parse xml
+        page = SvgPage(self, svg_xml)
+        return page
 
     def paper_brush(self):
         return wx.Brush(wx_colour(self.paper_color), wx.SOLID)
@@ -370,10 +368,6 @@ class SvgRenderer(object):
     def clear_to_paper(self, dc):
         dc.SetBackground(self.paper_brush())
         dc.Clear()
-
-    def clear(self):
-        if self.buffer:
-            self.clear_to_paper(wx.MemoryDC(self.buffer))
 
     def draw_notes(self, page, note_indices, highlight, dc, highlight_follow=False ):
         if not page.note_draw_info or not note_indices:
@@ -387,9 +381,7 @@ class SvgRenderer(object):
             gc.PopState()
         gc.PopState()
 
-    def draw(self, page, clear_background=True, dc=None):
-        dc = dc or wx.MemoryDC(self.buffer)
-        ##print 'draw', self.buffer.GetWidth(), self.buffer.GetHeight()
+    def draw(self, page, dc, clear_background=True):
         if clear_background:
             self.clear_to_paper(dc)
         #h = dc.Size[1] # for simulating OSX
@@ -398,7 +390,6 @@ class SvgRenderer(object):
         #gc.Scale(1, -1) # for simulating OSX
 
         self.default_transform = gc.GetTransform()
-        page.clear_notes()
         page.note_draw_info = []
         gc.PushState()
         gc.Scale(self.zoom, self.zoom)
@@ -411,8 +402,6 @@ class SvgRenderer(object):
             gc.PushState()
             gc.Scale(self.zoom, self.zoom)
             for x, y, abc_row, abc_col, desc in page.notes:
-                x /= self.zoom
-                y /= self.zoom
                 self.set_fill(gc, 'none')
                 self.set_stroke(gc, 'red')
                 gc.DrawRoundedRectangle(x-6, y-6, 12, 12, 4)
@@ -733,11 +722,8 @@ class SvgRenderer(object):
             # abcm2ps specific:
             desc = attr.get('desc')
             if desc:
-                user_x, user_y = self.transform_point(dc, x, y)
-                abc_row, abc_col = desc[1], desc[2]
-                page.notes.append((user_x, user_y, abc_row, abc_col, desc))
-                note_index = len(page.notes)-1
-                if note_index in page.selected_indices:
+                # note_draw_info grows in step with page.notes, so its length is this note's index
+                if len(page.note_draw_info) in page.selected_indices:
                     highlight = True
 
             dc.PushState()
@@ -844,7 +830,8 @@ class SvgRenderer(object):
             if '%' in width:
                 # 1.3.6.2 [JWdJ] 2015-02-12 Added for %%bgcolor
                 if width == height == '100%':
-                    x, y, width, height = map(float, (0, 0, self.buffer.GetWidth(), self.buffer.GetHeight()))
+                    # the rect is drawn in page space, so the whole page is the whole of it
+                    x, y, width, height = 0.0, 0.0, page.svg_width, page.svg_height
                 else:
                     return
             else:
@@ -875,80 +862,4 @@ class SvgRenderer(object):
         matrix.Concat(gc.GetTransform())
         return matrix
 
-    def transform_point(self, gc, x, y):
-        return self.page_space_matrix(gc).TransformPoint(x, y)
-
-class MyApp(wx.App):
-    def OnInit(self):
-        self.SetAppName('EasyABC')
-        return True
-
-def matrix_to_str(m):
-    return '(%s)' % ', '.join(['%.3f' % f for f in m.Get()])
-
-if __name__ == "__main__":
-    import os.path
-    app = MyApp(0)
-
-    buffer = wx_bitmap(200, 200, 32)
-    dc = wx.MemoryDC(buffer)
-    dc.SetBackground(wx.WHITE_BRUSH)
-    dc.Clear()
-    dc = wx.GraphicsContext.Create(dc)
-    dc.SetBrush(dc.CreateBrush(wx.BLACK_BRUSH))
-    print('default matrix %s' % dc.GetTransform().Get())
-    import math
-    original_matrix = dc.GetTransform()
-    path = dc.CreatePath()
-    path.AddEllipse(0, 20, 40, 20)
-    path.MoveToPoint(0, 0)
-    path.AddLineToPoint(10, 10)
-    path.AddLineToPoint(20, 0)
-    path.CloseSubpath()
-
-    if wx.Platform == "__WXMSW__":
-        a = 45
-    else:
-        a = radians(45)
-
-    original = dc.CreateMatrix(*original_matrix.Get())
-    om = dc.CreateMatrix(*original_matrix.Get())
-    m0 = dc.CreateMatrix(); m0.Scale(0.5, 0.5)
-    m1 = dc.CreateMatrix(); m1.Translate(150, 150)
-    m2 = dc.CreateMatrix(); m2.Rotate(a)
-    om.Concat(m0)
-    om.Concat(m2)
-    dc.SetTransform(om)
-    dc.DrawPath(path)
-    print('new matrix %s' % matrix_to_str(dc.GetTransform()))
-    om.Concat(m1)
-    om.Concat(m0)
-    dc.SetTransform(om)
-    dc.DrawPath(path)
-    print('new matrix', matrix_to_str(dc.GetTransform()))
-
-    print('----')
-    dc.SetTransform(original)
-    dc.Scale(0.5, 0.5)
-    dc.Translate(150, 150)
-    dc.Rotate(radians(25))
-    dc.Scale(0.5, 0.5)
-    print('new matrix %s' % matrix_to_str(dc.GetTransform()))
-
-    buffer.SaveFile('dc_test_linux.png', wx.BITMAP_TYPE_PNG)
-    if True:
-        r = wx.GraphicsRenderer.GetDefaultRenderer()
-        m1 = r.CreateMatrix(); m1.Scale(1.0, -1.0)
-        m2 = r.CreateMatrix(); m2.Translate(50, 60)
-        m1.Concat(m2)
-        print(m1.TransformPoint(100, 100))
-
-        m1 = r.CreateMatrix(); m1.Scale(1.0, -1.0)
-        m2 = r.CreateMatrix(); m2.Translate(50, 60)
-        m2.Concat(m1)
-        print(m1.TransformPoint(100, 100))
-
-        renderer = SvgRenderer(True)
-        #renderer.set_svg(open(os.path.join('abc', 'cache', 'temp_02e3f5d62f001.svg'), 'rb').read())
-        renderer.buffer.SaveFile('test_output.png', wx.BITMAP_TYPE_PNG)
 

@@ -245,10 +245,6 @@ class ScoreView(object):
         if not indices:
             return
         x, y, _, _, _ = page.notes[max(indices)]
-        #if len(indices) > 1:
-        #    x2, y2, _, _, _ = page.notes[min(indices)]
-        #    x = (x + x2) // 2
-        #    y = (y + y2) // 2
         self.scroll_music_pane(x, y)
 
     def OnMusicPaneClick(self, evt):
@@ -444,9 +440,6 @@ class ScoreView(object):
         if not tune or not self.current_svg_tune or (not select_closest_note and not select_closest_page):
             #FAU: No need to continue to process
             return
-        #if len(music_pane.current_page.notes) == 0:
-        #    #FAU: Notes were never drawn, force to draw otherwise error in multipage when switching page
-        #    music_pane.current_page.draw()
 
         # workaround for the fact the abcm2ps returns incorrect row numbers
         # check the row number of the first note and if it doesn't agree with the actual value
@@ -491,8 +484,8 @@ class ScoreView(object):
             p2_row = p2_body_row + self.current_svg_tune.first_note_line_index + 1
             new_page_index = None
             for page_index in page_indices:
+                # render_page parses the page, which is what fills notes_in_row.
                 page = self.current_svg_tune.render_page(page_index, frame.renderer)
-                page.draw()
                 if page and page.notes_in_row and caret_svg_row in page.notes_in_row:
                     new_page_index = page_index
                     #FAU: Do not break anymore to find other pages for selection
@@ -517,7 +510,7 @@ class ScoreView(object):
 
         musicpane_current_page = music_pane.current_page # 1.3.6.2 [JWdJ]
         if len(musicpane_current_page.notes) == 0:
-            #FAU: at this point in time notes should be drawn already thus if no notes then remove flag select
+            # there is nothing on this page to select
             select_closest_note=False
 
         #FAU: This is to track for the current page shown in the musicpane.
