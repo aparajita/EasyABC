@@ -534,14 +534,6 @@ class TypingAssistant(object):
                 evt.Skip()
         elif evt.GetUnicodeKey() == ord('L') and evt.CmdDown():
             frame.score_view.ScrollMusicPaneToMatchEditor(select_closest_note=True, select_closest_page=frame.mni_auto_refresh.IsChecked())
-        elif evt.MetaDown() and evt.GetKeyCode() == wx.WXK_UP:
-            editor.GotoPos(0)
-        elif evt.MetaDown() and evt.GetKeyCode() == wx.WXK_DOWN:
-            editor.GotoPos(editor.GetLength())
-        elif evt.MetaDown() and evt.GetKeyCode() == wx.WXK_LEFT:
-            editor.GotoPos(editor.PositionFromLine(editor.GetCurrentLine()))
-        elif evt.MetaDown() and evt.GetKeyCode() == wx.WXK_RIGHT:
-            editor.GotoPos(editor.GetLineEndPosition(editor.GetCurrentLine()))
         else:
             evt.Skip()
 

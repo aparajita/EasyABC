@@ -60,6 +60,7 @@ from wx import GetTranslation as _
 from wxhelper import *
 
 from abc_styler import ABCStyler
+from editor_keys import bind_editor_keys
 from error_marks import ErrorMarks
 from music_score_panel import MusicScorePanel
 from svgrenderer import SvgRenderer
@@ -332,6 +333,7 @@ class MainFrame(wx.Frame):
         self.editor.Bind(wx.EVT_LEFT_UP, self.score_view.OnEditorMouseRelease)
         self.editor.Bind(wx.EVT_KEY_DOWN, self.typing_assistant.OnKeyDownEvent)
         self.editor.Bind(wx.EVT_CHAR, self.typing_assistant.OnCharEvent)
+        bind_editor_keys(self.editor)
         self.editor.CmdKeyAssign(ord('+'), stc.STC_SCMOD_CTRL, stc.STC_CMD_ZOOMIN)
         self.editor.CmdKeyAssign(ord('-'), stc.STC_SCMOD_CTRL, stc.STC_CMD_ZOOMOUT)
         self.music_pane.Bind(wx.EVT_LEFT_DCLICK, self.score_view.OnMusicPaneDoubleClick)
