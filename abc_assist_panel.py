@@ -7,6 +7,8 @@ import webbrowser
 
 from urllib.parse import parse_qsl
 
+UPDATE_ASSIST_DELAY_MS = 250
+
 
 class AbcAssistControl(object):
     def __init__(self, parent, element):
@@ -57,6 +59,7 @@ class AbcAssistPanel(wx.Panel):
         self.settings = settings
         self.context = None
         self.abc_section = None
+        self.queue_number_update_assist = 0
         self.elements = AbcStructure.generate_abc_elements(cwd)
         self.actions_handlers = AbcActionHandlers(self.elements)
 
@@ -176,11 +179,12 @@ class AbcAssistPanel(wx.Panel):
                 self._editor.SetFocus()
         return wx.html.HTML_BLOCK
 
-    def __on_editor_update_delayed(self, update_number):
+    def __update_assist_delayed(self, update_number):
         if self.queue_number_update_assist == update_number:
             self.update_assist()
 
-    def __on_editor_update(self, event):
-        event.Skip()
+    def queue_update_assist(self):
+        # The editor fires on every keystroke and caret move, so only the last
+        # request in a burst reaches update_assist.
         self.queue_number_update_assist += 1
-        wx.CallLater(250, self.__on_editor_update_delayed, self.queue_number_update_assist)
+        wx.CallLater(UPDATE_ASSIST_DELAY_MS, self.__update_assist_delayed, self.queue_number_update_assist)

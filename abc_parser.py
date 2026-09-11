@@ -30,6 +30,7 @@ import re
 class Severity (Enum):
     ERROR = 'error'
     WARNING = 'warning'
+    INFO = 'info'
 
 
 @dataclass (frozen=True)
@@ -963,7 +964,15 @@ class Validator:
         for measure in voice.measures:
             s.overlayVnum = s.overlayVnum + 1 if overlay else 0
             overlay = s.check_measure (measure)
+        s.check_leftover_decorations ()
         s.voice = None
+
+    def check_leftover_decorations (s):     # decorations that no note claimed before the voice ended
+        if not s.nextdecos: return
+        position = s.node_position (s.nextdecosNode)
+        for d in s.nextdecos: s.error ('decoration applies to no note: %s' % d, position)
+        s.nextdecos = []
+        s.nextdecosNode = None
 
     def check_measure (s, measure):     # returns whether the measure ends in a voice overlay
         s.ntup, s.trem, s.intrem = -1, 0, 0
@@ -1104,8 +1113,7 @@ class Validator:
             if d in s.artMap or d in s.ornMap or d in ['trill(', 'trill)'] or d in s.tecMap or d in s.stringDecos: continue
             unhandled.append (d)
         if unhandled:
-            position = s.node_position (decosNode) if decosNode is not None else None
-            s.warn ('unhandled note decorations: %s' % unhandled, position)
+            s.warn ('unhandled note decorations: %s' % unhandled, s.node_position (decosNode))
 
     def check_lyrics (s, n):    # a lyric extend needs a syllable or extend on the previous note in the same verse
         for i, lyrobj in enumerate (n.objs):

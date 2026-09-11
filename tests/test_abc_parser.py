@@ -153,6 +153,20 @@ class ParseAbcTests(unittest.TestCase):
                 self.assertEqual(found, expected)
                 self.assertTrue(all(d.severity == Severity.ERROR for d in diagnostics))
 
+    def test_reports_a_decoration_no_note_claims_before_the_voice_ends(self):
+        # The header occupies lines 1-3, so every case's body sits on line 4.
+        header = 'X:1\nT:Test\nK:C\n'
+        cases = [
+            ('a trailing !fermata! is reported', 'C D!fermata!|]\n', [('decoration applies to no note: fermata', 4, 3)]),
+            ('a trailing decoration before a voice change is reported', 'C!fermata!\nV:2\n{e}F |]\n', [('decoration applies to no note: fermata', 4, 1)]),
+        ]
+        for description, body, expected in cases:
+            with self.subTest(description=description):
+                diagnostics = parse_abc(header + body)
+                found = [(d.message, d.position.line, d.position.column) for d in diagnostics]
+                self.assertEqual(found, expected)
+                self.assertTrue(all(d.severity == Severity.ERROR for d in diagnostics))
+
 
 if __name__ == '__main__':
     unittest.main()

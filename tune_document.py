@@ -737,9 +737,6 @@ class TuneList(object):
                     tune_list.EnsureVisible(index)
                     frame.music_pane.Scroll(0, 0)
 
-        if frame.abc_assist_panel.IsShown():
-            frame.abc_assist_panel.update_assist()
-
     def OnMovedToDifferentLine(self, queue_number_movement):
         if self.frame.score_view.queue_number_movement != queue_number_movement:
             return

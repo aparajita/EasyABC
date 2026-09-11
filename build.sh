@@ -26,7 +26,7 @@ if ! command -v brew >/dev/null 2>&1; then
   exit 1
 fi
 
-for formula in abcm2ps abcmidi; do
+for formula in abcm2ps abcmidi fluidsynth; do
   if ! brew list --versions "$formula" >/dev/null 2>&1; then
     brew install "$formula"
   fi

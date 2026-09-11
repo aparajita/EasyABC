@@ -671,6 +671,8 @@ class ScoreView(object):
             #wx.CallLater(260, frame.tune_list_controller.OnMovedToDifferentLine, self.queue_number_movement)
         # 1.3.6 [SS] 2014-12-02
         wx.CallLater(260, frame.tune_list_controller.OnMovedToDifferentLine, self.queue_number_movement)
+        if frame.abc_assist_panel.IsShown():
+            frame.abc_assist_panel.queue_update_assist()
         # if you remove the comment from ScrollMusicToMatchEditor, you will
         # not be able to select a group of notes in the MusicPane. On the
         # otherhand, the following function allows the highlighted note

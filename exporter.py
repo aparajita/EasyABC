@@ -393,7 +393,7 @@ class Exporter(object):
             f.write(os.linesep)
             f.write(tune.abc)
         frame = self.frame.document.OnNew()
-        frame.document.load(filepath.decode('utf-8'))
+        frame.document.load(filepath)
         return True
 
     def export_tune(self, tune, file_type, extension, convert_func, path, show_save_dialog=True):

@@ -296,7 +296,6 @@ def AbcToSvg(abc_code, header, cache_dir, settings, target_file_name=None, with_
     # 1.3.6 [SS] 2014-12-17
     abc_code = process_abc_code(settings, abc_code, header, minimal_processing=minimal_processing, landscape=landscape)
     #hash = get_hash_code(abc_code, read_text_if_file_exists(abcm2ps_format_path), str(with_annotations)) # 1.3.6 [SS] 2014-11-13
-    app_state.visible_abc_code = abc_code
     return abc_to_svg(abc_code, cache_dir, settings, target_file_name, with_annotations, one_file_per_page)
 
 

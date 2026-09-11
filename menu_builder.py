@@ -17,11 +17,15 @@ import os
 import wx
 import wx.lib.agw.aui as aui
 import wx.lib.platebtn as platebtn
+import wx.svg
 from wx import GetTranslation as _
 
 import printing
 from score_view import DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM
 from wxhelper import create_menu, create_menu_bar, append_menu_item, append_submenu, delete_menuitem
+
+TOOLBAR_ICON_SIZE = wx.Size(18, 18)
+ASSIST_ICON_SIZE = wx.Size(12, 12)
 
 
 def setup_menus(frame):
@@ -228,8 +232,9 @@ def setup_toolbar(frame):
     frame.toolbar.AddControl(record)
     frame.toolbar.AddSeparator()
 
-    # 1.3.6.3 [JWdJ] 2015-04-26 turned off abc assist for it is not finished yet
-    abc_assist = platebtn.PlateButton(frame.toolbar, frame.id_abc_assist, "", wx.Image(os.path.join(image_path, 'bulb.png')).ConvertToBitmap(), style=button_style)
+    # Rasterising the SVG against the toolbar picks up the display's content scale factor.
+    bulb_svg = wx.svg.SVGimage.CreateFromFile(os.path.join(image_path, 'bulb.svg'))
+    abc_assist = platebtn.PlateButton(frame.toolbar, frame.id_abc_assist, "", bulb_svg.ConvertToScaledBitmap(ASSIST_ICON_SIZE, frame.toolbar), style=button_style)
     abc_assist.SetHelpText(_('ABC assist'))
     abc_assist.SetToolTip(wx.ToolTip(_('ABC assist'))) # 1.3.7.0 [JWdJ] 2015-12
     frame.toolbar.AddControl(abc_assist, label=_('ABC assist'))

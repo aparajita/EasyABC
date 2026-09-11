@@ -12,6 +12,8 @@ from appearance import current_appearance, ERROR_ICON, WARNING_ICON, ICON_GLYPH
 ERROR_INDICATOR = stc.STC_INDIC_CONTAINER
 WARNING_INDICATOR = stc.STC_INDIC_CONTAINER + 1
 
+# Its keys are the severities the editor marks; a diagnostic of any other severity
+# (Severity.INFO) gets no squiggle and no tooltip, so it has no appearance to define.
 SEVERITY_INDICATOR = {
     Severity.ERROR: ERROR_INDICATOR,
     Severity.WARNING: WARNING_INDICATOR,
@@ -20,7 +22,8 @@ SEVERITY_INDICATOR = {
 # How long the mouse must rest over a mark before its explanation appears.
 HOVER_DELAY_MS = 500
 
-# The tooltip title and icon colour for each severity.
+# The tooltip title and icon colour for each marked severity; the tooltip only ever
+# describes a mark, so it is keyed the same as SEVERITY_INDICATOR.
 SEVERITY_PRESENTATION = {
     Severity.ERROR: ('Error', ERROR_ICON),
     Severity.WARNING: ('Warning', WARNING_ICON),
@@ -103,7 +106,7 @@ class ErrorMarks(object):
         line_count = editor.GetLineCount()
         for diagnostic in diagnostics:
             position = diagnostic.position
-            if position is None:
+            if position is None or diagnostic.severity not in SEVERITY_INDICATOR:
                 continue
             editor_line = first_editor_line + position.line - 1 - header_line_count
             # the tune may have been edited between the parse and this apply

@@ -22,7 +22,7 @@ from fractions import Fraction
 
 from abc_tune import comment_pattern
 from aligner import bar_sep_without_space
-from constants import program_name
+from constants import line_end_re, program_name
 from tune_model import text_to_lines
 
 all_notes = "C,, D,, E,, F,, G,, A,, B,, C, D, E, F, G, A, B, C D E F G A B c d e f g a b c' d' e' f' g' a' b' c'' d'' e'' f'' g'' a'' b''".split()
@@ -123,7 +123,7 @@ def get_notes_from_abc(abc, exclude_grace_notes=False):
 
 def copy_bar_symbols_from_first_voice(abc):
     # normalize line endings (necessary for ^ in regexp) and extract the header and the two voices
-    abc = re.sub(r'\r\n|\r', '\n', abc)
+    abc = line_end_re.sub('\n', abc)
     m = re.match(r'(?sm)(.*?K:[^\n]+\s+)^V: *1(.*?)^V: *2\s*(.*)', abc)
     header, V1, V2 = m.groups()
 
@@ -317,16 +317,17 @@ def process_abc_code(settings, abc_code, header, minimal_processing=False, tempo
     parts.append(abc_code)
     abc_code = ''.join(parts)
 
+    return finish_preprocessing(abc_code, tempo_multiplier)
+
+
+def finish_preprocessing(abc_code, tempo_multiplier):
+    ''' applies the preprocessing every consumer of the ABC needs, whatever renders it '''
     abc_code = re.sub(r'\[\[(.*/)(.+?)\]\]', r'\2', abc_code)  # strip PmWiki links and just include the link text
     if tempo_multiplier:
         abc_code = change_abc_tempo(abc_code, tempo_multiplier)
 
     abc_code = process_MCM(abc_code)
-
-    # 1.3.6.3 [JWdJ] 2015-04-22 fixing newlines to part of process_abc_code
-    abc_code = re.sub(r'\r\n|\r', '\n', abc_code)  ## TEST
-
-    return abc_code
+    return line_end_re.sub('\n', abc_code)
 
 
 def fix_boxmarks_texts(abc):

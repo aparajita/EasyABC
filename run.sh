@@ -16,6 +16,13 @@ for tool in abcm2ps abc2abc abc2midi midi2abc; do
   fi
 done
 
+shopt -s nullglob
+fluidsynth_libs=(/opt/homebrew/lib/libfluidsynth*.dylib /usr/local/lib/libfluidsynth*.dylib)
+shopt -u nullglob
+if [[ "${#fluidsynth_libs[@]}" -eq 0 ]]; then
+  built=0
+fi
+
 if [[ "$built" -eq 0 ]]; then
   ./build.sh
 fi
