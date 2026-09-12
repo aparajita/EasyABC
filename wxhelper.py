@@ -165,3 +165,20 @@ def get_normal_fontsize():
     else:
         font_size = 14
     return font_size
+
+
+class Debouncer(object):
+    """Collapses a burst of requests into a single call to ``callback``.
+
+    The call is made ``delay_ms`` after the most recent request. One timer is
+    restarted per request rather than one scheduled per request, so a burst
+    costs no more than a single request does.
+    """
+
+    def __init__(self, delay_ms, callback):
+        self._delay_ms = delay_ms
+        self._timer = wx.Timer()
+        self._timer.Bind(wx.EVT_TIMER, lambda evt: callback())
+
+    def request(self):
+        self._timer.StartOnce(self._delay_ms)

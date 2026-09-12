@@ -424,6 +424,12 @@ class MyAbcFrame(wx.Frame):
             win.ShowText(app_state.visible_abc_code)
 
 
+def refresh_message_windows():
+    """Show what the last run left in app_state, in whichever message windows are open."""
+    MyInfoFrame.update_text()
+    MyAbcFrame.update_text()
+
+
 class MyTunesListFrame(wx.Frame):
     ''' Creates the TextCtrl for displaying the tunes list'''
     def __init__(self):

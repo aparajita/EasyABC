@@ -29,7 +29,8 @@ from abc_transform import process_abc_code
 from app_state import app_state
 from constants import cwd, abcm2ps_default_encoding
 from dialogs import MyMidiTextTree
-from exceptions import AbortException, Abcm2psException, NWCConversionException
+from exceptions import Abcm2psException, NWCConversionException
+from tool_run import ABCM2PS, ABC2ABC, MIDI2ABC, NWC2XML, GHOSTSCRIPT, get_output_from_process
 
 if wx.Platform == "__WXMSW__":
     import win32process
@@ -54,31 +55,8 @@ def start_process(cmd):
     #process = subprocess.Popen(cmd,shell=False,stdin=None,stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True,creationflags=creationflags)
     process = subprocess.Popen(cmd, shell=False, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=creationflags)
     stdout_value, stderr_value = process.communicate()
-    app_state.messages += '\n'+stderr_value + stdout_value
+    app_state.messages += '\n' + (stderr_value + stdout_value).decode('utf-8', 'replace')
     return
-
-
-def get_output_from_process(cmd, input=None, creationflags=None, cwd=None, bufsize=0, encoding='utf-8', errors='strict', output_encoding=None):
-    stdin_pipe = None
-    if input is not None:
-        stdin_pipe = subprocess.PIPE
-        if isinstance(input, str):
-            input = input.encode(encoding, errors)
-
-    if creationflags is None:
-        if wx.Platform == "__WXMSW__":
-            creationflags = win32process.CREATE_NO_WINDOW
-        else:
-            creationflags = 0
-
-    process = subprocess.Popen(cmd, stdin=stdin_pipe, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=creationflags, cwd=cwd, bufsize=bufsize)
-    stdout_value, stderr_value = process.communicate(input)
-    returncode = process.returncode
-
-    if output_encoding is None:
-        output_encoding = encoding
-    stdout_value, stderr_value = stdout_value.decode(output_encoding, errors), stderr_value.decode(output_encoding, errors)
-    return stdout_value, stderr_value, returncode
 
 
 def show_in_browser(url):
@@ -177,34 +155,36 @@ def find_ps_to_pdf_converter():
     return ''
 
 
+def add_abcm2ps_options(cmd, extra_params, abcm2ps_format_path):
+    ''' appends the user's extra abcm2ps parameters and format file to an abcm2ps command line '''
+    if extra_params:
+        # split extra_params on spaces, but treat quoted strings as one element even if they contain spaces
+        cmd = cmd + [x or y for (x, y) in re.findall(r'"(.+?)"|(\S+)', extra_params)]
+    if abcm2ps_format_path and not '-F' in cmd:
+        # strip .fmt file ending
+        if abcm2ps_format_path.lower().endswith('.fmt'):
+            abcm2ps_format_path = abcm2ps_format_path[:-4]
+        cmd = cmd + ['-F', abcm2ps_format_path]
+    return cmd
+
+
 def AbcToPS(abc_code, cache_dir, extra_params='', abcm2ps_path=None, abcm2ps_format_path=None):
-    ''' converts from abc to postscript. Returns (ps_file, error_message) tuple, where ps_file is None if the creation was not successful '''
+    ''' converts from abc to postscript. Returns the path of the postscript file, or None if the creation was not successful '''
     # hash_code = get_hash_code(abc_code, read_text_if_file_exists(abcm2ps_format_path))
     ps_file = os.path.abspath(os.path.join(cache_dir, 'temp.ps'))
 
     # determine parameters
     cmd1 = [abcm2ps_path, '-', '-O', '%s' % ps_file]
-    if extra_params:
-        # split extra_params on spaces, but treat quoted strings as one element even if they contain spaces
-        cmd1 = cmd1 + [x or y for (x, y) in re.findall(r'"(.+?)"|(\S+)', extra_params)]
-    if abcm2ps_format_path and not '-F' in cmd1:
-        # strip .fmt file ending
-        if abcm2ps_format_path.lower().endswith('.fmt'):
-            abcm2ps_format_path = abcm2ps_format_path[:-4]
-        cmd1 = cmd1 + ['-F', abcm2ps_format_path]
+    cmd1 = add_abcm2ps_options(cmd1, extra_params, abcm2ps_format_path)
 
     if os.path.exists(ps_file):
         os.remove(ps_file)
 
     input_abc = abc_code + os.linesep * 2
-    stdout_value, stderr_value, returncode = get_output_from_process(cmd1, input=input_abc, encoding=abcm2ps_default_encoding)
-    stderr_value = os.linesep.join([x for x in stderr_value.split('\n')
-                                    if not x.startswith('abcm2ps-') and not x.startswith('File ') and not x.startswith('Output written on ')])
-    stderr_value = stderr_value.strip()
-    app_state.messages += '\nAbcToPs\n' + " ".join(cmd1) + '\n' + stdout_value + stderr_value
+    ABCM2PS.run(cmd1, input=input_abc, encoding=abcm2ps_default_encoding)
     if not os.path.exists(ps_file):
-        ps_file = None
-    return (ps_file, stderr_value)
+        return None
+    return ps_file
 
 
 def GetSvgFileList(first_page_file_path):
@@ -220,7 +200,7 @@ def GetSvgFileList(first_page_file_path):
 
 
 def abc_to_svg(abc_code, cache_dir, settings, target_file_name=None, with_annotations=True, one_file_per_page=True):
-    """ converts from abc to postscript. Returns (svg_files, error_message) tuple, where svg_files is an empty list if the creation was not successful """
+    """ converts from abc to svg. Returns (svg_files, severity) tuple, where svg_files is an empty list if the creation was not successful and severity is the Severity of the abcm2ps run """
     # 1.3.6.3 [SS] 2015-05-01
     abcm2ps_path = settings.get('abcm2ps_path', '')
     abcm2ps_format_path = settings.get('abcm2ps_format_path', '')
@@ -230,22 +210,15 @@ def abc_to_svg(abc_code, cache_dir, settings, target_file_name=None, with_annota
 
     if target_file_name:
         svg_file = target_file_name
-        svg_file_first = svg_file.replace('.svg', '001.svg')
     else:
         #grab svg file from cache if it exists
         #svg_file = os.path.abspath(os.path.join(cache_dir, 'temp_%s.svg' % hash)) # 1.3.6 [SS] 2014-11-13
         svg_file = os.path.abspath(os.path.join(cache_dir, 'temp.svg')) # 1.3.6 [SS] 2014-11-13
-        svg_file_first = svg_file.replace('.svg', '001.svg')
 
         #if os.path.exists(svg_file_first):  p09 disable cache
             #return (GetSvgFileList(svg_file_first), '')
 
-        # 1.3.6 [SS] 2014-11-16
-        # clear out all 001.svg, 002.svg and etc. so the old files
-        # do not appear accidently
-        files_to_be_deleted = GetSvgFileList(svg_file_first)
-        for f in files_to_be_deleted:
-            os.remove(f)
+    svg_file_first = svg_file.replace('.svg', '001.svg')
 
     # determine parameters
     cmd1 = [abcm2ps_path, '-', '-O', '%s' % os.path.basename(svg_file)]
@@ -257,42 +230,29 @@ def abc_to_svg(abc_code, cache_dir, settings, target_file_name=None, with_annota
     if with_annotations:
         cmd1 = cmd1 + ['-A']
 
+    cmd1 = add_abcm2ps_options(cmd1, extra_params, abcm2ps_format_path)
 
-    if extra_params:
-        # split extra_params on spaces, but treat quoted strings as one element even if they contain spaces
-        cmd1 = cmd1 + [x or y for (x, y) in re.findall(r'"(.+?)"|(\S+)', extra_params)]
-    if abcm2ps_format_path and not '-F' in cmd1:
-        # strip .fmt file ending
-        if abcm2ps_format_path.lower().endswith('.fmt'):
-            abcm2ps_format_path = abcm2ps_format_path[:-4]
-        cmd1 = cmd1 + ['-F', abcm2ps_format_path]
-
-
-    if os.path.exists(svg_file_first):
-        os.remove(svg_file_first)
+    # 1.3.6 [SS] 2014-11-16
+    # clear out all 001.svg, 002.svg and etc. so pages of a longer earlier
+    # tune do not pass for pages of this one
+    for f in GetSvgFileList(svg_file_first):
+        os.remove(f)
 
     #fse = sys.getfilesystemencoding()
     #cmd1 = [arg.encode(fse) if isinstance(arg,unicode) else arg for arg in cmd1]
 
     # clear app_state.messages any time the music panel is refreshed
-    app_state.messages = u'\nAbcToSvg\n' + " ".join(cmd1)
+    app_state.messages = u''
     input_abc = abc_code + os.linesep * 2
-    stdout_value, stderr_value, returncode = get_output_from_process(cmd1, input=input_abc, encoding=abcm2ps_default_encoding, bufsize=-1, cwd=os.path.dirname(svg_file))
-    app_state.messages += '\n' + stdout_value + stderr_value
+    run = ABCM2PS.run(cmd1, input=input_abc, encoding=abcm2ps_default_encoding, bufsize=-1, cwd=os.path.dirname(svg_file))
 
-    if returncode < 0:
-        app_state.messages += '\n' + _('%(program)s exited abnormally (errorcode %(error)#8x)') % {'program': 'Abcm2ps', 'error': returncode & 0xffffffff}
+    if run.returncode < 0:
         raise Abcm2psException('Unknown error - abcm2ps may have crashed')
-    stderr_value = os.linesep.join([x for x in stderr_value.splitlines()
-                                    if not x.startswith('abcm2ps-') and not x.startswith('File ') and not x.startswith('Output written on ')])
-    stderr_value = stderr_value.strip()
-    if os.path.exists(svg_file_first):
-        return (GetSvgFileList(svg_file_first), stderr_value)
-    else:
-        return ([], stderr_value)
+    return GetSvgFileList(svg_file_first), run.severity
 
 
 def AbcToSvg(abc_code, header, cache_dir, settings, target_file_name=None, with_annotations=True, minimal_processing=False, landscape=False, one_file_per_page=True):
+    """ preprocesses abc_code and converts it to svg. Returns the (svg_files, severity) tuple of abc_to_svg unchanged """
     # 1.3.6 [SS] 2014-12-17
     abc_code = process_abc_code(settings, abc_code, header, minimal_processing=minimal_processing, landscape=landscape)
     #hash = get_hash_code(abc_code, read_text_if_file_exists(abcm2ps_format_path), str(with_annotations)) # 1.3.6 [SS] 2014-11-13
@@ -307,18 +267,12 @@ def AbcToAbc(abc_code, cache_dir, params, abc2abc_path=None):
     # determine parameters
     cmd1 = [abc2abc_path, '-', '-r', '-b', '-e'] + params
 
-    app_state.messages += '\nAbcToAbc\n' + " ".join(cmd1)
-
     input_abc = abc_code + os.linesep * 2
-    stdout_value, stderr_value, returncode = get_output_from_process(cmd1, bufsize=-1, input=input_abc, encoding=abcm2ps_default_encoding)
-    app_state.messages += '\n' + stderr_value
-    if returncode < 0:
-        app_state.messages += '\n' + _('%(program)s exited abnormally (errorcode %(error)#8x)') % {'program': 'Abc2abc', 'error': returncode & 0xffffffff}
+    run = ABC2ABC.run(cmd1, bufsize=-1, input=input_abc, encoding=abcm2ps_default_encoding)
 
-    stderr_value = stderr_value.strip()
-    stdout_value = stdout_value
-    if returncode == 0:
-        return stdout_value, stderr_value
+    stderr_value = run.stderr.strip()
+    if run.returncode == 0:
+        return run.stdout, stderr_value
     else:
         return None, stderr_value
 
@@ -326,14 +280,12 @@ def AbcToAbc(abc_code, cache_dir, params, abc2abc_path=None):
 def MidiToMftext(midi2abc_path, midifile):
     ' dissasemble midi file to text using midi2abc'
     cmd1 = [midi2abc_path, midifile, '-mftext']
-    app_state.messages += '\nMidiToMftext\n' + " ".join(cmd1)
 
     if os.path.exists(midi2abc_path):
-        stdout_value, stderr_value, returncode = get_output_from_process(cmd1, bufsize=-1)
+        run = MIDI2ABC.run(cmd1, bufsize=-1)
         midiframe = MyMidiTextTree(_('Disassembled Midi File'))
         midiframe.Show(True)
-        midi_data = stdout_value
-        midi_lines = midi_data.splitlines()
+        midi_lines = run.stdout.splitlines()
         midiframe.LoadMidiData(midi_lines)
     else:
         wx.MessageBox(_("Cannot find the executable midi2abc. Be sure it is in your bin folder and its path is defined in ABC Setup/File Settings."), _("Error"), wx.ICON_ERROR | wx.OK)
@@ -351,7 +303,7 @@ def AbcToPDF(settings, abc_code, header, cache_dir, extra_params='', abcm2ps_pat
     pdf_file = os.path.abspath(os.path.join(cache_dir, 'temp.pdf'))
     # 1.3.6 [SS] 2014-12-17
     abc_code = process_abc_code(settings, abc_code, header, minimal_processing=True)
-    (ps_file, error) = AbcToPS(abc_code, cache_dir, extra_params, abcm2ps_path, abcm2ps_format_path)
+    ps_file = AbcToPS(abc_code, cache_dir, extra_params, abcm2ps_path, abcm2ps_format_path)
     if not ps_file:
         return None
 
@@ -368,11 +320,7 @@ def AbcToPDF(settings, abc_code, header, cache_dir, extra_params='', abcm2ps_pat
     if os.path.exists(pdf_file):
         os.remove(pdf_file)
 
-    # 1.3.6.1 [SS] 2015-01-13
-    app_state.messages += '\nAbcToPDF\n' + " ".join(cmd2)
-    stdout_value, stderr_value, returncode = get_output_from_process(cmd2)
-    # 1.3.6.1 [SS] 2015-01-13
-    app_state.messages += '\n' + stderr_value
+    GHOSTSCRIPT.run(cmd2)
     if os.path.exists(pdf_file):
         return pdf_file
 
@@ -394,11 +342,9 @@ def NWCToXml(filepath, cache_dir, nwc2xml_path):
 
     #cmd = [nwc2xml_path, '--charset=ISO-8859-1', nwc_file_path]
     cmd = [nwc2xml_path, nwc_file_path]
-    stdout_value, stderr_value, returncode = get_output_from_process(cmd)
-    if returncode < 0:
-        app_state.messages += '\n' + _('%(program)s exited abnormally (errorcode %(error)#8x)') % {'program': 'Nwc2xml', 'error': returncode & 0xffffffff}
+    run = NWC2XML.run(cmd)
 
-    if not os.path.exists(xml_file_path) or returncode != 0:
-        stderr_value = stderr_value.replace(os.path.dirname(nwc_file_path) + os.sep, '')  # simply any reference to the file path in the error message
+    if not os.path.exists(xml_file_path) or run.returncode != 0:
+        stderr_value = run.stderr.replace(os.path.dirname(nwc_file_path) + os.sep, '')  # simply any reference to the file path in the error message
         raise NWCConversionException(_('Error during conversion of %(filename)s: %(error)s' % {'filename': os.path.basename(filepath), 'error': stderr_value}))
     return xml_file_path

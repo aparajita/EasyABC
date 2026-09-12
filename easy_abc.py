@@ -75,10 +75,11 @@ from search_panel import FlexibleListCtrl, AbcSearchPanel
 from background_threads import EVT_MUSIC_UPDATE_DONE
 from abc_tools import show_in_browser, get_default_path_for_executable, find_ps_to_pdf_converter, MidiToMftext
 from dialogs import FieldReferenceTree, MyInfoFrame, \
-    MyAbcFrame, MyTunesListFrame, AboutFrame, MyFileDropTarget
+    MyAbcFrame, MyTunesListFrame, AboutFrame, MyFileDropTarget, refresh_message_windows
 from app_state import app_state
 from constants import program_version, program_name, WX4, application_path, cwd, default_midi_volume, default_midi_pan, default_midi_instrument
 from exporter import Exporter
+from tool_run import ABCM2PS, status_text_for
 import menu_builder
 if sys.version_info >= (3,0,0):
     from queue import Queue # 1.3.6.2 [JWdJ] 2015-02
@@ -96,6 +97,8 @@ if wx.Platform == "__WXMSW__":
 from appearance import current_appearance, rebuild_appearance
 from appearance import DEFAULT_NOTE_HIGHLIGHT as default_note_highlight_color
 from appearance import DEFAULT_NOTE_HIGHLIGHT_FOLLOW as default_note_highlight_follow_color
+
+REFRESH_MUSIC_DELAY_MS = 250
 
 
 # 1.3.6.3 [JWdJ] 2015-04-22
@@ -217,6 +220,7 @@ class MainFrame(wx.Frame):
         self.document = TuneDocument(self)
         self.tune_list_controller = TuneList(self)
         self.score_view = ScoreView(self)
+        self.refresh_music_debouncer = Debouncer(REFRESH_MUSIC_DELAY_MS, self.score_view.refresh_tunes)
         self.typing_assistant = TypingAssistant(self)
         self.find_replace = FindReplace(self)
         self.__current_page_index = 0 # 1.3.6.2 [JWdJ] 2015-02
@@ -330,7 +334,7 @@ class MainFrame(wx.Frame):
         self.editor.Bind(stc.EVT_STC_STYLENEEDED, self.styler.OnStyleNeeded)
         self.editor.Bind(stc.EVT_STC_CHANGE, self.OnChangeText)
         self.editor.Bind(stc.EVT_STC_MODIFIED, self.OnModified)
-        self.editor.Bind(stc.EVT_STC_UPDATEUI, self.score_view.OnPosChanged)
+        self.editor.Bind(stc.EVT_STC_UPDATEUI, self.OnEditorUpdateUI)
         self.editor.Bind(wx.EVT_LEFT_UP, self.score_view.OnEditorMouseRelease)
         self.editor.Bind(wx.EVT_KEY_DOWN, self.typing_assistant.OnKeyDownEvent)
         self.editor.Bind(wx.EVT_CHAR, self.typing_assistant.OnCharEvent)
@@ -845,9 +849,12 @@ class MainFrame(wx.Frame):
         if evt.GetLinesAdded() != 0:
             wx.CallAfter(self.tune_list_controller.UpdateTuneListAndReselectTune)
 
-    def AutomaticUpdate(self, update_number):
-        if self.score_view.queue_number_refresh_music == update_number:
-            self.score_view.refresh_tunes()
+    def OnEditorUpdateUI(self, evt):
+        # The frame owns the editor, so it fans its update event out to the
+        # panels that follow the caret rather than each of them binding it.
+        evt.Skip()
+        self.score_view.OnPosChanged()
+        self.abc_assist_panel.queue_update_assist()
 
     def OnChangeText(self, event):
         event.Skip()
@@ -856,8 +863,7 @@ class MainFrame(wx.Frame):
         menu_builder.GrayUngray(self)
         # if auto-refresh is on
         if self.mni_auto_refresh.IsChecked():
-            self.score_view.queue_number_refresh_music += 1
-            wx.CallLater(250, self.AutomaticUpdate, self.score_view.queue_number_refresh_music)
+            self.refresh_music_debouncer.request()
 
     def OnUpdate(self, evt):
         c = evt.GetKeyCode()
@@ -1000,21 +1006,9 @@ class MainFrame(wx.Frame):
     # When AbcToSvg is called in a thread, we should not try to write to the EasyAbc frame
     # since there is a chance that the resource is already being used by the main program.
     # To prevent this, I have moved this code to a separate method.
-    def update_statusbar_and_messages(self):
-        # P09 2014-10-26 [SS]
-        MyInfoFrame.update_text() # 1.3.6.3 [JWDJ] 2015-04-27
-
-        # 1.3.6 2014-12-16 [SS]
-        MyAbcFrame.update_text() # 1.3.6.3 [JWDJ] 2015-04-27
-
-
-        # 1.3.6.3 2015-03-15 [SS]
-        if app_state.messages.find('Error') != -1 or app_state.messages.find('error') != -1:
-            self.statusbar.SetStatusText(_('{0} reported some errors').format('Abcm2ps'))
-        elif app_state.messages.find('Warning') != -1 or app_state.messages.find('warning') != -1:
-            self.statusbar.SetStatusText(_('{0} reported some warnings').format('Abcm2ps'))
-        else:
-            self.statusbar.SetStatusText('')
+    def update_statusbar_and_messages(self, severity):
+        refresh_message_windows()
+        self.statusbar.SetStatusText(status_text_for(ABCM2PS, severity))
 
     def OnReducedMargins(self, evt):
         self.settings['reduced_margins'] = self.mni_reduced_margins.IsChecked()

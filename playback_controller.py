@@ -29,7 +29,7 @@ from wx import GetTranslation as _
 
 from abc_character_encoding import abc_text_to_unicode
 from abc_midi_export import AbcToMidi
-from abc_tools import get_output_from_process, get_midi_structure_as_text
+from abc_tools import get_midi_structure_as_text
 from abc_transform import get_notes_from_abc, str2fraction
 from app_state import app_state
 from background_threads import EVT_RECORDSTOP, MidiThread, RecordThread
@@ -37,6 +37,7 @@ from constants import application_path, max_int
 import menu_builder
 from midi2abc import midi_to_abc
 from settings_dialogs import MidiOptionsFrame
+from tool_run import MIDI2ABC
 from tune_model import MidiNote, AbcTunes
 
 try:
@@ -355,7 +356,6 @@ class PlaybackController(object):
         self.last_played_svg_row = None
         self.current_time_slice = None
         self.future_time_slice = None
-        self.queue_number_follow_score = 0
         self.index = 1
         self.play_music_thread = None
         self.started_playing = False
@@ -676,21 +676,15 @@ class PlaybackController(object):
                     frame.progress_slider.SetRange(0, int(length)) #FAU:MIDIPLAY: mplay might return a float. thus forcing an int
 
                 if frame.settings.get('follow_score', False):
-                    self.queue_number_follow_score += 1
-                    queue_number = self.queue_number_follow_score
-                    #wx.CallLater(1, self.FollowScore, offset, queue_number) #[EPO] 2018-11-20  first arg 0 causes exception
-                    self.FollowScore(offset, queue_number)
+                    self.FollowScore(offset)
 
                 frame.progress_slider.SetValue(offset)
             elif self.started_playing and not self.mc.is_paused: #and self.uses_fluidsynth
                 self.started_playing = False
                 wx.CallLater(500, self.OnAfterStop)
 
-    def FollowScore(self, offset, queue_number):
+    def FollowScore(self, offset):
         frame = self.frame
-        if self.queue_number_follow_score != queue_number:
-            return
-
         if not self.played_notes_timeline:
             return
 
@@ -887,14 +881,11 @@ class PlaybackController(object):
         midi2abc_path = frame.settings.get('midi2abc_path')
         if midi2abc_path and os.path.exists(midi2abc_path):
             cmd = [midi2abc_path, '-f', filename]
-            app_state.messages += '\nMidiToAbc\n' + " ".join(cmd)
-            stdout_value, stderr_value, returncode = get_output_from_process(cmd)
-            app_state.messages += '\n' + stdout_value + stderr_value
-            if returncode != 0:
-                app_state.messages += '\n' + _('%(program)s exited abnormally (errorcode %(error)#8x)') % { 'program': 'MidiToAbc', 'error': returncode & 0xffffffff }
+            run = MIDI2ABC.run(cmd)
+            if run.returncode != 0:
                 return None
-            if stdout_value:
-                frame.typing_assistant.AddTextWithUndo('\n' + stdout_value + '\n')
+            if run.stdout:
+                frame.typing_assistant.AddTextWithUndo('\n' + run.stdout + '\n')
         else:
             self.internal_midi_conversion(filename, notes)
 

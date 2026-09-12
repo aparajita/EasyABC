@@ -56,9 +56,6 @@ class ScoreView(object):
         self.selected_note_indices = []
         self.zoom_factor = 1.0
         self.zoom_at_gesture_start = DEFAULT_ZOOM
-        self.last_line_number_selected = -1
-        self.queue_number_movement = 0
-        self.queue_number_refresh_music = 0
         self.music_update_thread = None
         self.score_is_maximized = False
 
@@ -653,7 +650,7 @@ class ScoreView(object):
             self.ScrollMusicPaneToMatchEditor(select_closest_note=True, select_closest_page=False)
 
     # p09 This function needs more work, see comments below.
-    def OnPosChanged(self, evt):
+    def OnPosChanged(self):
         # This function is called by the interrupt stc.EVT_STC_UPDATEUI
         # which occurs whenever the edit window is updated. This can
         # occur many times. To view who initializes the interrupt,
@@ -661,18 +658,6 @@ class ScoreView(object):
         # depth of the stack to view.
         #print traceback.extract_stack(None, 5)
         frame = self.frame
-        self.queue_number_movement += 1
-        position = frame.editor.GetCurrentPos()
-        line_no = frame.editor.LineFromPosition(position)
-        #print '*****OnPosChanged***** : position =    ',position,'  ',line_no
-        if line_no != self.last_line_number_selected:
-            self.last_line_number_selected = line_no
-            # 1.3.6 [SS] 2014-12-02
-            #wx.CallLater(260, frame.tune_list_controller.OnMovedToDifferentLine, self.queue_number_movement)
-        # 1.3.6 [SS] 2014-12-02
-        wx.CallLater(260, frame.tune_list_controller.OnMovedToDifferentLine, self.queue_number_movement)
-        if frame.abc_assist_panel.IsShown():
-            frame.abc_assist_panel.queue_update_assist()
         # if you remove the comment from ScrollMusicToMatchEditor, you will
         # not be able to select a group of notes in the MusicPane. On the
         # otherhand, the following function allows the highlighted note
@@ -721,7 +706,7 @@ class ScoreView(object):
             #              ScrollMusicPaneToMatchEditor is called without requesting to go to closest page
             page.clear_note_selection()
             self.ScrollMusicPaneToMatchEditor(select_closest_note=True, select_closest_page=False)
-            frame.update_statusbar_and_messages()
+            frame.update_statusbar_and_messages(self.current_svg_tune.severity)
         except Exception as e:
             error_msg = traceback.format_exc()
             wx.CallLater(600, frame.SetErrorMessage, u'Internal error when drawing svg: %s' % error_msg)

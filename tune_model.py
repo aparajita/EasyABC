@@ -43,8 +43,7 @@ def read_abc_file(path):
 
 class MidiTune(object):
     """ Container for abc2midi-generated .midi files """
-    def __init__(self, abc_tune, midi_file=None, error=None):
-        self.error = error
+    def __init__(self, abc_tune, midi_file=None):
         self.midi_file = midi_file
         self.abc_tune = abc_tune
 
@@ -57,8 +56,8 @@ class MidiTune(object):
 
 class SvgTune(object):
     """ Container for abcm2ps-generated .svg files """
-    def __init__(self, abc_tune, svg_files, error, diagnostics, header_line_count):
-        self.error = error
+    def __init__(self, abc_tune, svg_files, severity, diagnostics, header_line_count):
+        self.severity = severity
         self.svg_files = svg_files
         self.pages = {}
         self.abc_tune = abc_tune

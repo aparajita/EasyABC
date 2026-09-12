@@ -19,31 +19,19 @@
 
 import os
 import re
-from dataclasses import dataclass
-from typing import List, Optional as Opt
 
 import wx
-from wx import GetTranslation as _
 
-from abc_parser import Severity
-from abc_tools import get_output_from_process
 from abc_transform import str2bool, finish_preprocessing
 from abc_tune import voice_re, AbcTune
 from app_state import app_state
 from constants import default_midi_volume, default_midi_pan
-from dialogs import MyInfoFrame, MyAbcFrame
+from dialogs import refresh_message_windows
+from tool_run import ABC2MIDI, status_text_for
 from tune_model import text_to_lines, MidiTune
 
 gchordpat = re.compile('\"[^\"]+\"')
 keypat = re.compile('([A-G]|[a-g]|)(#|b?)')
-
-# The prefixes abc2midi writes in front of a diagnostic, as in
-# 'Error in line-char 3-0 : ...' and 'Warning in line-char 7-1 : ...'.
-ABC2MIDI_ERROR_PREFIX = 'Error'
-ABC2MIDI_WARNING_PREFIX = 'Warning'
-
-# 'Warning in line-char 7-1 : instruction !fall! ignored'
-IGNORED_INSTRUCTION_RE = re.compile(r'instruction\s+!.*?!\s+ignored')
 
 
 def test_for_guitar_chords(abccode):
@@ -210,72 +198,26 @@ def add_abc2midi_options(cmd, settings, add_follow_score_markers):
     return cmd
 
 
-@dataclass(frozen=True)
-class ReportedLine:
-    ''' One line abc2midi printed, with the severity it carries. '''
-    text: str
-    severity: Severity
-
-
-@dataclass(frozen=True)
-class Abc2midiRun:
-    ''' The outcome of one abc2midi run: the MIDI file it wrote, None when it failed,
-        and everything it said, classified. '''
-    midi_file_name: Opt[str]
-    lines: List[ReportedLine]
-
-
-def abnormal_exit_message(returncode):
-    # 1.3.7.0 [SS] 2016-01-06
-    return _('%(program)s exited abnormally (errorcode %(error)#8x)') % { 'program': 'AbcToMidi', 'error': returncode & 0xffffffff }
-
-
-def classify_abc2midi_output(stdout_value, stderr_value, returncode):
-    ''' Classify what one abc2midi run printed, returning a ReportedLine per non-empty
-        line of stdout followed by stderr, in the order the streams give them.
-
-        - A line reporting an ignored instruction (`instruction !X! ignored`) is INFO for
-          every X. abc2midi acts on 20 decorations and ignores the rest; that a decoration
-          has no playback meaning in this binary is not a fault in the tune.
-        - Any other line takes the severity of the prefix abc2midi writes: `Error ...` is
-          ERROR, `Warning ...` is WARNING.
-        - A line with neither prefix — the version banner, `writing MIDI file ...` — is INFO.
-        - A non-zero returncode adds a final ERROR line carrying the abnormal-exit text.
-    '''
-    lines = []
-    for line in (stdout_value + stderr_value).splitlines():
-        if not line.strip():
-            continue
-        if IGNORED_INSTRUCTION_RE.search(line):
-            severity = Severity.INFO
-        elif line.startswith(ABC2MIDI_ERROR_PREFIX):
-            severity = Severity.ERROR
-        elif line.startswith(ABC2MIDI_WARNING_PREFIX):
-            severity = Severity.WARNING
-        else:
-            severity = Severity.INFO
-        lines.append(ReportedLine(line, severity))
-
-    if returncode != 0:
-        lines.append(ReportedLine(abnormal_exit_message(returncode), Severity.ERROR))
-
-    return lines
-
-
 def abc_to_midi(abc_code, settings, midi_file_name, add_follow_score_markers):
+    ''' Run abc2midi on `abc_code`, writing to `midi_file_name`.
 
+        Returns the pair `(midi_file_name, severity)`: the path to the MIDI file
+        abc2midi wrote, or None when it wrote none, and the worst severity abc2midi
+        reported. Success is decided by the file's existence, not the exit code:
+        abc2midi exits non-zero whenever it reports an Error line and still writes
+        a complete, playable MIDI file.
+    '''
     abc2midi_path = settings.get('abc2midi_path')
     cmd = [abc2midi_path, '-', '-o', midi_file_name]
     cmd = add_abc2midi_options(cmd, settings, add_follow_score_markers)
-    app_state.messages += '\nAbcToMidi\n' + " ".join(cmd)
     input_abc = abc_code + os.linesep * 2
-    stdout_value, stderr_value, returncode = get_output_from_process(cmd, input=input_abc)
-    app_state.messages += '\n' + stdout_value + stderr_value
-    if returncode != 0:
-        app_state.messages += '\n' + abnormal_exit_message(returncode)
-
-    lines = classify_abc2midi_output(stdout_value, stderr_value, returncode)
-    return Abc2midiRun(midi_file_name if returncode == 0 else None, lines)
+    # The name is a hash of the tune, so a file left by an earlier run of the same
+    # tune would otherwise pass for this run's output.
+    if os.path.exists(midi_file_name):
+        os.remove(midi_file_name)
+    run = ABC2MIDI.run(cmd, input=input_abc)
+    midi_file_name = midi_file_name if os.path.exists(midi_file_name) else None
+    return midi_file_name, run.severity
 
 
 def process_abc_for_midi(abc_code, header, cache_dir, settings, tempo_multiplier):
@@ -524,22 +466,9 @@ def AbcToMidi(abc_code, header, cache_dir, settings, statusbar, tempo_multiplier
     if midi_file_name is None:
         midi_file_name = os.path.abspath(os.path.join(cache_dir, 'temp%s.midi' % abc_tune.tune_id))
         # midi_file_name = generate_temp_file_name(cache_dir, '.midi')
-    run = abc_to_midi(abc_code, settings, midi_file_name, add_follow_score_markers)
-    # P09 2014-10-26 [SS]
-    MyInfoFrame.update_text()
-
-    # 1.3.6 2014-12-16 [SS]
-    MyAbcFrame.update_text()
-
-    # 1.3.6 [SS] 2014-12-08
-    if any(line.severity is Severity.ERROR for line in run.lines):
-        statusbar.SetStatusText(_('{0} reported some errors').format('Abc2midi'))
-    elif any(line.severity is Severity.WARNING for line in run.lines):
-        statusbar.SetStatusText(_('{0} reported some warnings').format('Abc2midi'))
-    else:
-        statusbar.SetStatusText('')
-
-    if run.midi_file_name:
-        return MidiTune(abc_tune, run.midi_file_name)
-    else:
-        return None
+    midi_file_name, severity = abc_to_midi(abc_code, settings, midi_file_name, add_follow_score_markers)
+    refresh_message_windows()
+    statusbar.SetStatusText(status_text_for(ABC2MIDI, severity))
+    if midi_file_name:
+        return MidiTune(abc_tune, midi_file_name)
+    return None

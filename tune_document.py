@@ -737,10 +737,6 @@ class TuneList(object):
                     tune_list.EnsureVisible(index)
                     frame.music_pane.Scroll(0, 0)
 
-    def OnMovedToDifferentLine(self, queue_number_movement):
-        if self.frame.score_view.queue_number_movement != queue_number_movement:
-            return
-
     def OnGenerateIncipits(self, evt):
         main_frame = self.frame
         dlg = IncipitsFrame(main_frame, main_frame.settings)

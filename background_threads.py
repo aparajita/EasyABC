@@ -21,7 +21,7 @@ from queue import Empty, Queue
 
 import wx
 
-from abc_parser import parse_abc
+from abc_parser import Severity, parse_abc
 from abc_tools import abc_to_svg, start_process
 from abc_transform import process_abc_code, frac_mod
 from abc_tune import AbcTune
@@ -102,7 +102,7 @@ class MusicUpdateThread(threading.Thread):
                     header_line_count = len(line_end_re.findall(abc_header))
                     diagnostics = parse_abc(abc_header + abc_code)
                 if not abc_code:
-                    svg_files, error = [], None
+                    svg_files, severity = [], Severity.INFO
                 elif not 'K:' in abc_code:
                     raise Exception('K: field is missing')
                 else:
@@ -111,10 +111,10 @@ class MusicUpdateThread(threading.Thread):
                     abc_tune = AbcTune(abc_code)
                     file_name = os.path.abspath(os.path.join(self.cache_dir, 'temp-%s-.svg' % abc_tune.tune_id))
                     # file_name = generate_temp_file_name(self.cache_dir, '-.svg', replace_ending='-001.svg')
-                    svg_files, error = abc_to_svg(abc_code, self.cache_dir, self.settings, target_file_name=file_name)
+                    svg_files, severity = abc_to_svg(abc_code, self.cache_dir, self.settings, target_file_name=file_name)
             except Abcm2psException as e:
                 # if abcm2ps crashes, then wait at least 10 seconds until next invocation
-                svg_files, error = [], str(e)
+                svg_files, severity = [], Severity.ERROR
                 # wx.PostEvent(self.notify_window, MusicUpdateDoneEvent(-1, (svg_files, error)))
                 # time.sleep(10.0)
                 # continue
@@ -122,11 +122,11 @@ class MusicUpdateThread(threading.Thread):
                 # print(error_msg)
                 pass
             except Exception as e:
-                svg_files, error = [], str(e)
+                svg_files, severity = [], Severity.ERROR
                 # error_msg = traceback.format_exc()
                 # print(error_msg)
                 pass
-            svg_tune = SvgTune(abc_tune, svg_files, error, diagnostics, header_line_count)
+            svg_tune = SvgTune(abc_tune, svg_files, severity, diagnostics, header_line_count)
             if app_state.running:
                 wx.PostEvent(self.notify_window, MusicUpdateDoneEvent(-1, svg_tune))
 

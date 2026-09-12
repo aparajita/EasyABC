@@ -86,11 +86,11 @@ def print_or_preview_svg(frame, only_preview):
     use_landscape = print_data.GetOrientation() == wx.LANDSCAPE
 
     # 1.3.6 [SS] 2014-12-02  2014-12-07
-    svg_files, error = AbcToSvg(abc, header, frame.cache_dir,
-                                frame.settings,
-                                minimal_processing=True,
-                                landscape=use_landscape)
-    frame.update_statusbar_and_messages()
+    svg_files, severity = AbcToSvg(abc, header, frame.cache_dir,
+                                   frame.settings,
+                                   minimal_processing=True,
+                                   landscape=use_landscape)
+    frame.update_statusbar_and_messages(severity)
     if svg_files:
         pdd = wx.PrintDialogData(print_data)
         printout = MusicPrintout(svg_files, zoom=10.0, title=title, can_draw_sharps_and_flats=frame.settings['can_draw_sharps_and_flats'])

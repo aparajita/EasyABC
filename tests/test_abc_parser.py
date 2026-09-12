@@ -16,6 +16,14 @@ def _diagnostics_with_fragment(diagnostics, fragment):
 
 
 class ParseAbcTests(unittest.TestCase):
+    def assert_diagnostics(self, header, cases):
+        for description, body, expected in cases:
+            with self.subTest(description=description):
+                diagnostics = parse_abc(header + body)
+                found = [(d.message, d.position.line, d.position.column) for d in diagnostics]
+                self.assertEqual(found, expected)
+                self.assertTrue(all(d.severity == Severity.ERROR for d in diagnostics))
+
     def test_misplaced_symbol_reports_correct_line_through_header_machinery(self):
         # Every case shifts where the music actually sits relative to the raw line count.
         cases = [
@@ -146,12 +154,7 @@ class ParseAbcTests(unittest.TestCase):
                 [('note has no lyric in verse 2', 6, 2)],
             ),
         ]
-        for description, body, expected in cases:
-            with self.subTest(description=description):
-                diagnostics = parse_abc(header + body)
-                found = [(d.message, d.position.line, d.position.column) for d in diagnostics]
-                self.assertEqual(found, expected)
-                self.assertTrue(all(d.severity == Severity.ERROR for d in diagnostics))
+        self.assert_diagnostics(header, cases)
 
     def test_reports_a_decoration_no_note_claims_before_the_voice_ends(self):
         # The header occupies lines 1-3, so every case's body sits on line 4.
@@ -160,12 +163,7 @@ class ParseAbcTests(unittest.TestCase):
             ('a trailing !fermata! is reported', 'C D!fermata!|]\n', [('decoration applies to no note: fermata', 4, 3)]),
             ('a trailing decoration before a voice change is reported', 'C!fermata!\nV:2\n{e}F |]\n', [('decoration applies to no note: fermata', 4, 1)]),
         ]
-        for description, body, expected in cases:
-            with self.subTest(description=description):
-                diagnostics = parse_abc(header + body)
-                found = [(d.message, d.position.line, d.position.column) for d in diagnostics]
-                self.assertEqual(found, expected)
-                self.assertTrue(all(d.severity == Severity.ERROR for d in diagnostics))
+        self.assert_diagnostics(header, cases)
 
 
 if __name__ == '__main__':

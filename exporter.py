@@ -26,10 +26,11 @@ import wx
 from wx import GetTranslation as _
 
 from abc_midi_export import AbcToMidi
-from abc_tools import AbcToAbc, AbcToPDF, AbcToSvg, get_output_from_process, launch_file
+from abc_tools import AbcToAbc, AbcToPDF, AbcToSvg, launch_file
 from aligner import align_lines
 from app_state import app_state
-from dialogs import ErrorFrame
+from dialogs import ErrorFrame, refresh_message_windows
+from tool_run import FFMPEG
 from tune_model import Tune, text_to_lines
 from utils import ensure_file_name_does_not_exist
 from xml2abc_interface import abc_to_xml
@@ -140,14 +141,11 @@ class Exporter(object):
 
                 if os.path.exists(filepath):
                     os.remove(filepath)
-                app_state.messages += '\nffmpeg\n' + " ".join(cmd)
-                stdout_value, stderr_value, returncode = get_output_from_process(cmd)
-                if returncode != 0:
-                    app_state.messages += stderr_value
-                    app_state.messages += stdout_value
-                    print(stderr_value)
-                    print(stdout_value)
-                    print(returncode)
+                run = FFMPEG.run(cmd)
+                if run.returncode != 0:
+                    print(run.stderr)
+                    print(run.stdout)
+                    print(run.returncode)
 
                 if os.path.exists(tmp_file):
                     os.remove(tmp_file)
@@ -197,11 +195,11 @@ class Exporter(object):
 
     def export_svg(self, tune, filepath):
         # 1.3.6 [SS] 2014-12-02 2014-12-07
-        svg_files, error = AbcToSvg(tune.abc, tune.header,
-                                    self.frame.cache_dir,
-                                    self.frame.settings,
-                                    target_file_name=filepath,
-                                    with_annotations=False)
+        svg_files, _severity = AbcToSvg(tune.abc, tune.header,
+                                        self.frame.cache_dir,
+                                        self.frame.settings,
+                                        target_file_name=filepath,
+                                        with_annotations=False)
         if svg_files:
             return launch_file(svg_files[0])
         return False
@@ -251,10 +249,10 @@ class Exporter(object):
 
     def export_html(self, tune, filepath):
         # 1.3.6 [SS] 2014-12-02 2014-12-07
-        svg_files, error = AbcToSvg(tune.abc, tune.header,
-                                    self.frame.cache_dir,
-                                    self.frame.settings,
-                                    with_annotations=False)
+        svg_files, _severity = AbcToSvg(tune.abc, tune.header,
+                                        self.frame.cache_dir,
+                                        self.frame.settings,
+                                        with_annotations=False)
         if svg_files:
             with open(filepath, 'w', encoding='utf-8', newline='') as f:
                 f.write('<html xmlns="http://www.w3.org/1999/xhtml">\n')
@@ -359,12 +357,12 @@ class Exporter(object):
                     num_pages = []
                     for i, tune in enumerate(tunes):
                         # 1.3.6 [SS] 2014-12-02 2014-12-07
-                        svg_files, error = AbcToSvg(tune.abc, tune.header,
-                                                    self.frame.cache_dir,
-                                                    self.frame.settings,
-                                                    with_annotations=False,
-                                                    one_file_per_page=False)
-                        self.frame.update_statusbar_and_messages()
+                        svg_files, severity = AbcToSvg(tune.abc, tune.header,
+                                                       self.frame.cache_dir,
+                                                       self.frame.settings,
+                                                       with_annotations=False,
+                                                       one_file_per_page=False)
+                        self.frame.update_statusbar_and_messages(severity)
                         if svg_files:
                             for j, fn in enumerate(svg_files):
                                 zip.write(fn, 'OEBPS/Contents/tune%.2d_page%.2d.svg' % (i+1, j+1))
@@ -493,7 +491,7 @@ class Exporter(object):
             self.frame.SetCursor(wx.STANDARD_CURSOR)
             if progdialog:
                 progdialog.Destroy()
-        self.frame.update_statusbar_and_messages()
+        refresh_message_windows()
         if success:
             self.frame.statusbar.SetStatusText(_('Export completed'))
         else:

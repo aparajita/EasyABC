@@ -4,6 +4,7 @@ import logging
 import wx
 import wx.html
 import webbrowser
+from wxhelper import Debouncer
 
 from urllib.parse import parse_qsl
 
@@ -59,7 +60,7 @@ class AbcAssistPanel(wx.Panel):
         self.settings = settings
         self.context = None
         self.abc_section = None
-        self.queue_number_update_assist = 0
+        self._update_assist_debouncer = Debouncer(UPDATE_ASSIST_DELAY_MS, self.update_assist)
         self.elements = AbcStructure.generate_abc_elements(cwd)
         self.actions_handlers = AbcActionHandlers(self.elements)
 
@@ -179,12 +180,6 @@ class AbcAssistPanel(wx.Panel):
                 self._editor.SetFocus()
         return wx.html.HTML_BLOCK
 
-    def __update_assist_delayed(self, update_number):
-        if self.queue_number_update_assist == update_number:
-            self.update_assist()
-
     def queue_update_assist(self):
-        # The editor fires on every keystroke and caret move, so only the last
-        # request in a burst reaches update_assist.
-        self.queue_number_update_assist += 1
-        wx.CallLater(UPDATE_ASSIST_DELAY_MS, self.__update_assist_delayed, self.queue_number_update_assist)
+        if self.IsShown():
+            self._update_assist_debouncer.request()
