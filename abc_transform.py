@@ -30,9 +30,11 @@ all_notes = "C,, D,, E,, F,, G,, A,, B,, C, D, E, F, G, A, B, C D E F G A B c d 
 # Decorations abcm2ps has no glyph for, defined for it in the ABC handed to it.
 #
 # %%deco takes name, drawing function, PostScript routine, height, and the widths it
-# claims left and right of its anchor. Function 1 anchors at the notehead's vertical
-# centre, five points left of the head, so the routine shifts right to clear the head and
-# an up-stem and leave a gap of roughly two fifths of a staff space after them. An
+# claims left and right of its anchor. Function 8 anchors on the notehead itself — the
+# highest one of a chord — at the x abcm2ps uses for the head, so an accidental in front
+# of the note does not drag the anchor left with it. The routine shifts right from there
+# to clear the head and an up-stem and leave a gap of roughly two fifths of a staff space
+# after them. An
 # unqualified %%beginps block reaches SVG and PostScript output alike, so the score panel,
 # printing and PS export all draw the same outline.
 #
@@ -41,10 +43,10 @@ all_notes = "C,, D,, E,, F,, G,, A,, B,, C, D, E, F, G, A, B, C D E F G A B c d 
 # license are in third-party-licenses.txt. Bravura draws on a 1000-unit em with 250 units
 # to the staff space, and abcm2ps puts 6 points there, hence the .024 scale. Both spaces
 # run y upwards, so the outline needs no reflection.
-abcm2ps_decoration_definitions = '''%%deco fall 1 fall 9 0 19
+abcm2ps_decoration_definitions = '''%%deco fall 8 fall 9 0 19
 %%beginps
 /fall{
-    gsave T 11.5 0 T .024 dup scale
+    gsave T 6.5 0 T .024 dup scale
     15 42 M
     -12 0 -14 -6 -14 -18 RC
     0 -20 RL
