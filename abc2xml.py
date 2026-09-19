@@ -20,7 +20,7 @@ from pyparsing import srange, CharsNotIn, StringEnd, LineEnd, White, Regex
 from pyparsing import nums, alphas, alphanums, ParseException, Forward
 try:    import xml.etree.cElementTree as E
 except: import xml.etree.ElementTree as E
-import types, sys, os, re, datetime
+import types, sys, os, re, datetime, copy
 
 VERSION = 245
 
@@ -524,19 +524,73 @@ def removeElems (root_elem, parent_str, elem_str):
         e = p.find (elem_str)
         if e != None: p.remove (e)
 
-def alignLyr (vce, lyrs):
+gracewordRE = re.compile (r'graceword\b\s*(\S*)')
+def gracewordSetting (directive, current):  # the setting after an I: directive (the text after I:)
+    m = gracewordRE.match (directive)
+    if not m: return current
+    return m.group (1)[:1] in ('', '1', 't', 'T', 'y', 'Y')  # the logical values abcm2ps accepts as true
+
+def headerGraceword (header):   # the %%graceword setting of a header of [I:...] fields, off when absent
+    graceword = False
+    for directive in re.findall (r'\[I:([^\]]*)\]', header): graceword = gracewordSetting (directive, graceword)
+    return graceword
+
+graceSplitRE = re.compile (r'((?:[^\\/=]|\\.|=(?!/))*)(=?)/(.*)$')  # grace part, its dash marker (=), principal part
+def splitGraceSyllable (syl):   # 'O=/All-' -> (O with dash, All with dash), None when the text has no unescaped slash
+    m = graceSplitRE.match (syl.t[0])
+    if not m: return None
+    def part (text, dash):      # an empty part puts no syllable on its note
+        if not text: return None
+        p = copy.copy (syl)     # keeps the source position for error reports
+        p.t = [text, '-'] if dash else [text]
+        return p
+    grace, mark, principal = m.groups ()
+    return part (grace, mark), part (principal, len (syl.t) == 2)
+
+class LyricAligner:     # distributes the syllables of the lyric blocks of one voice over its notes
     empty_el = pObj ('leeg', '*')
-    for k, lyr in enumerate (lyrs): # lyr = one full line of lyrics
-        i = 0               # syl counter
-        for elem in vce:    # reiterate the voice block for each lyrics line
-            if elem.name == 'note' and not (hasattr (elem, 'chord') or hasattr (elem, 'grace')):
-                if i >= len (lyr): lr = empty_el
-                else: lr = lyr [i]
-                lr.t[0] = lr.t[0].replace ('%5d',']')
-                elem.objs.append (lr)
-                if lr.name != 'sbar': i += 1
-            if elem.name == 'rbar' and i < len (lyr) and lyr[i].name == 'sbar': i += 1
-    return vce
+
+    def __init__ (s, graceword):
+        s.graceword = graceword # with %%graceword a grace group shares the syllable of the note it precedes
+
+    def align (s, vce, lyrs):   # every note in a syllable slot gets exactly one object per lyric line (the verse number)
+        graceword = s.graceword
+        for lyr in lyrs:        # lyr = one full line of lyrics
+            graceword = s.graceword # each line is aligned from the setting at the start of the block
+            i = 0               # syl counter
+            group = []          # grace notes preceding the next principal note
+            for elem in vce:    # reiterate the voice block for each lyrics line
+                if elem.name == 'inline' and elem.t[0] == 'I':
+                    graceword = gracewordSetting (' '.join (elem.t[1:]), graceword)
+                elif elem.name == 'note' and hasattr (elem, 'grace'):
+                    if graceword and not hasattr (elem, 'chord'): group.append (elem)
+                elif elem.name == 'note' and not hasattr (elem, 'chord'):
+                    if i >= len (lyr): lr = s.empty_el
+                    else: lr = lyr [i]
+                    lr.t[0] = lr.t[0].replace ('%5d',']')
+                    if group and lr.name != 'sbar': s.alignGraceSlot (group, elem, lr)
+                    else: elem.objs.append (lr)
+                    group = []
+                    if lr.name != 'sbar': i += 1
+                elif elem.name in ('rest', 'rbar', 'lbar'): group = []  # a grace group only takes a syllable before a note
+                if elem.name == 'rbar' and i < len (lyr) and lyr[i].name == 'sbar': i += 1
+        s.graceword = graceword
+        return vce
+
+    def alignGraceSlot (s, group, principal, lr):   # the syllable goes on the first grace note, a melisma covers the rest
+        melisma = pObj ('ext', ['_'])
+        split = splitGraceSyllable (lr) if lr.name == 'syl' else None
+        if split:
+            grace, main = split
+            first = grace or s.empty_el
+            tail = melisma if grace else s.empty_el
+        elif lr.name == 'syl':
+            first, tail, main = lr, melisma, melisma
+        else:                   # an extend or a skip covers the whole slot
+            first = tail = main = lr
+        group [0].objs.append (first)
+        for nt in group [1:]: nt.objs.append (tail)
+        principal.objs.append (main or s.empty_el)
 
 slur_move = re.compile (r'(?<![!+])([}><][<>]?)(\)+)')  # (?<!...) means: not preceeded by ...
 mm_rest = re.compile (r'([XZ])(\d+)')
@@ -1143,7 +1197,8 @@ class MusicXml:
         if hasStem: s.doBeams (n, nt, den, lev + 1)   # no stems -> no beams in a tab staff
         s.doNotations (n, decos, decosPos, ptup, alter, tupnotation, tstop, nt, lev + 1)
         if n.objs: s.doLyr (n, nt, lev + 1)
-        elif n.name != 'rest': s.prevLyric = {}   # clear on note without lyrics; a rest doesn't break a melisma
+        elif n.name != 'rest' and not (hasattr (n, 'chord') or hasattr (n, 'grace')):
+            s.prevLyric = {}    # clear on a principal note without lyrics; rests, chord notes and grace notes don't break a melisma
         return nt
 
     def cmpNormType (s, rdvs, lev): # compute the normal-type of a tuplet (only needed for Finale)
@@ -1926,6 +1981,7 @@ class MusicXml:
             r = re.search (r'transpose[^-\d]*(-?\d+)', x)
             if r: addTrans (r.group (1))        # addTrans -> doFields
         elif x.startswith ('percmap'): readPercMap (x); s.pMapFound = 1
+        elif gracewordRE.match (x): pass        # applied when the lyrics are aligned (LyricAligner)
         else: info ('skipped I-field: %s' % x)
 
     def parseStaveDef (s, vdefs):
@@ -2091,11 +2147,12 @@ class MusicXml:
                 curVoiceRows = voiceRows        # consulted by noteActn/restActn via srcContext()
                 vce = abc_voice.parseString (voice).asList ()
                 lyr_notes = []          # remember notes between lyric blocks
+                aligner = LyricAligner (headerGraceword (header))
                 for m in vce:           # all measures
                     for e in m:         # all abc-elements
                         if e.name == 'lyr_blk':         # -> e.objs is list of lyric lines
                             lyr = [line.objs for line in e.objs]    # line.objs is listof syllables
-                            alignLyr (lyr_notes, lyr)   # put all syllables into corresponding notes
+                            aligner.align (lyr_notes, lyr)  # put all syllables into corresponding notes
                             lyr_notes = []
                         else:
                             lyr_notes.append (e)
