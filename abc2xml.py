@@ -24,6 +24,13 @@ import types, sys, os, re, datetime, copy
 
 VERSION = 245
 
+# SongScribe opens a MusicXML file only when these match its reader's gates:
+# SoftwareProvenance.PRODUCT_NAME and MIN_VERSION, MusicXmlTags.VERSION_VALUE and
+# FileExtensions.MUSICXML in the SongScribe sources.
+SONGSCRIBE_SOFTWARE = 'SongScribe 2.0.0'
+SONGSCRIBE_MUSICXML_VERSION = '4.0'
+SONGSCRIBE_EXT = '.musicxml'
+
 python3 = sys.version_info[0] > 2
 lmap = lambda f, xs: list (map (f, xs))   # eager map for python 3
 if python3:
@@ -975,6 +982,7 @@ class MusicXml:
 
     def __init__ (s):
         s.pageFmtCmd = []   # set by command line option -p
+        s.songscribe = False    # set by command line option --songscribe
         s.reset ()
     def reset (s, fOpt=False):
         s.divisions = 2520  # xml duration of 1/4 note, 2^3 * 3^2 * 5 * 7 => 5,7,9 tuplets
@@ -1744,12 +1752,12 @@ class MusicXml:
         s.rbStop = 0    # sluit een open volta aan het eind van de maat
         overlay = 0
         maat = E.Element ('measure', number = str(i))
-        if fieldmap: s.doFields (maat, fieldmap, lev + 1)
         if s.linebrk:   # there was a line break in the previous measure
-            e = E.Element ('print')
+            e = E.Element ('print')     # before the fields: SongScribe drops a key that precedes its line's print
             e.set ('new-system', 'yes')
             addElem (maat, e, lev + 1)
             s.linebrk = 0
+        if fieldmap: s.doFields (maat, fieldmap, lev + 1)
         for it, x in enumerate (t):
             if x.name == 'note' or x.name == 'rest':
                 if x.dur.t[0] == 0:  # a leading zero was used for stemmless in abcm2ps, we only support !stemless!
@@ -1820,8 +1828,8 @@ class MusicXml:
         s.unitLcur = s.unitL    # set the default unit length at begin of each voice
         s.curVolta = ''
         s.lyrdash = {}
-        s.linebrk = 0
-        s.midprg = ['', '', '', ''] # MIDI channel nr, program nr, volume, panning for the current part
+        s.linebrk = 1 if s.songscribe else 0    # SongScribe starts a line only at a new-system print
+        s.midprg =['', '', '', ''] # MIDI channel nr, program nr, volume, panning for the current part
         s.gcue_on = 0           # reset cue note marker for each new voice
         s.gtrans = 0            # reset octave transposition (by clef)
         s.percVoice = 0         # 1 if percussion clef encountered
@@ -2082,6 +2090,8 @@ class MusicXml:
         encoder = E.Element ('encoder')
         encoder.text = 'abc2xml version %d' % VERSION
         addElem (encoding, encoder, lev + 3)
+        if s.songscribe:
+            addElemT (encoding, 'software', SONGSCRIBE_SOFTWARE, lev + 3)
         if s.supports_tag:  # avoids interference of auto-flowing and explicit linebreaks
             suports = E.Element ('supports', attribute="new-system", element="print", type="yes", value="yes")
             addElem (encoding, suports, lev + 3)
@@ -2189,6 +2199,7 @@ class MusicXml:
             raise
 
         score = E.Element ('score-partwise')
+        if s.songscribe: score.set ('version', SONGSCRIBE_MUSICXML_VERSION)
         attrmap = {'Div': str (s.divisions), 'K':'C treble', 'M':'4/4'}
         for res in hs:
             if res.name == 'field':
@@ -2249,7 +2260,8 @@ def fixDoctype (elem):
     else:       xs = E.tostring (elem, encoding='utf-8')    # keep the string utf-8 encoded for writing to file
     ys = xs.split ('\n')
     ys.insert (0, xmlVersion)  # crooked logic of ElementTree lib
-    ys.insert (1, '<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">')
+    dtdVersion = elem.get ('version', '3.0')    # the DTD must name the version the root states
+    ys.insert (1, '<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML %s Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">' % dtdVersion)
     return '\n'.join (ys)
 
 def xml2mxl (pad, fnm, data):   # write xml data to compressed .mxl file
@@ -2269,7 +2281,7 @@ def convert (pad, fnm, abc_string, mxl, rOpt=False, tOpt=False, bOpt=False, fOpt
     score = mxm.parse (abc_string, rOpt, bOpt, fOpt)
     writefile (pad, fnm, '', score, mxl, tOpt)
 
-def writefile (pad, fnm, fnmNum, xmldoc, mxlOpt, tOpt=False):
+def writefile (pad, fnm, fnmNum, xmldoc, mxlOpt, tOpt=False, ext='.xml'):
     ipad, ifnm = os.path.split (fnm)                    # base name of input path is
     if tOpt:
         x = xmldoc.findtext ('work/work-title', 'no_title')
@@ -2279,7 +2291,7 @@ def writefile (pad, fnm, fnmNum, xmldoc, mxlOpt, tOpt=False):
     xmlstr = fixDoctype (xmldoc)
     if pad:
         if not mxlOpt or mxlOpt in ['a', 'add']:
-            outfnm = os.path.join (pad, ifnm + '.xml')  # joined with path from -o option
+            outfnm = os.path.join (pad, ifnm + ext)     # joined with path from -o option
             outfile = open (outfnm, 'w')
             outfile.write (xmlstr)
             outfile.close ()
@@ -2314,7 +2326,7 @@ mxm = MusicXml ()               # same for instance of MusicXml
 
 def getXmlScores (abc_string, skip=0, num=1, rOpt=False, bOpt=False, fOpt=False): # not used, backwards compatibility
     return [fixDoctype (xml_doc) for xml_doc in
-        getXmlDocs (abc_string, skip=0, num=1, rOpt=False, bOpt=False, fOpt=False)]
+        getXmlDocs (abc_string, skip, num, rOpt, bOpt, fOpt)]
 
 def getXmlDocs (abc_string, skip=0, num=1, rOpt=False, bOpt=False, fOpt=False): # added by David Randolph
     xml_docs = []
@@ -2349,7 +2361,7 @@ if __name__ == '__main__':
     from glob import glob
     import time
 
-    parser = OptionParser (usage='%prog [-h] [-r] [-t] [-b] [-m SKIP NUM] [-o DIR] [-p PFMT] [-z MODE] [--meta MAP] <file1> [<file2> ...]', version='version %d' % VERSION)
+    parser = OptionParser (usage='%prog [-h] [-r] [-t] [-b] [-m SKIP NUM] [-o DIR] [-p PFMT] [-z MODE] [--meta MAP] [--songscribe] <file1> [<file2> ...]', version='version %d' % VERSION)
     parser.add_option ("-o", action="store", help="store xml files in DIR", default='', metavar='DIR')
     parser.add_option ("-m", action="store", help="skip SKIP (0) tunes, then read at most NUM (1) tunes", nargs=2, type='int', default=(0,1), metavar='SKIP NUM')
     parser.add_option ("-p", action="store", help="pageformat PFMT (mm) = scale (0.75), pageheight (297), pagewidth (210), leftmargin (18), rightmargin (18), topmargin (10), botmargin (10)", default='', metavar='PFMT')
@@ -2359,11 +2371,17 @@ if __name__ == '__main__':
     parser.add_option ("-b", action="store_true", help="line break at EOL", default=False)
     parser.add_option ("--meta", action="store", help="map infofields to XML metadata, MAP = R:poet,Z:lyricist,N:...", default='', metavar='MAP')
     parser.add_option ("-f", action="store_true", help="force string/fret allocations for tab staves", default=False)
+    parser.add_option ("--songscribe", action="store_true", help="write files that SongScribe opens, with extension %s; implies -b" % SONGSCRIBE_EXT, default=False)
     options, args = parser.parse_args ()
     if len (args) == 0: parser.error ('no input file given')
     pad = options.o
     if options.mxl and options.mxl not in ['a','add', 'r', 'replace']:
         parser.error ('MODE should be a(dd) or r(eplace), not: %s' % options.mxl)
+    if options.songscribe and options.mxl:  # SongScribe does not open .mxl files
+        parser.error ('--songscribe cannot be combined with -z')
+    mxm.songscribe = options.songscribe
+    if options.songscribe: options.b = True     # each ABC line becomes a SongScribe line
+    outExt = SONGSCRIBE_EXT if options.songscribe else '.xml'
     if pad:
         if not os.path.exists (pad): os.mkdir (pad)
         if not os.path.isdir (pad): parser.error ('%s is not a directory' % pad)
@@ -2398,5 +2416,5 @@ if __name__ == '__main__':
         xml_docs = getXmlDocs (abctext, skip, num, options.r, options.b, options.f)
         for itune, xmldoc in enumerate (xml_docs):
             fnmNum = '%02d' % (itune + 1) if len (xml_docs) > 1 else ''
-            writefile (pad, fnm, fnmNum, xmldoc, options.mxl, options.t)
+            writefile (pad, fnm, fnmNum, xmldoc, options.mxl, options.t, outExt)
     info ('done in %.2f secs' % (time.time () - t_start))
