@@ -1,0 +1,26 @@
+**abcm2ps extensions**
+- **Repeat brackets:**
+  - `rbstop` closes the open ending at the end of the current measure, with no hook.
+  - `rbend` closes it with the downward hook at the end.
+- **Beams:**
+  - `beamon` joins the notes on either side of a space into one beam.
+  - `beambr1` and `beambr2` break a beam group down to one or two beams.
+  - `beam-accel` and `beam-rall` draw fanned beams (accelerando and rallentando).
+- **Stems and tremolo:**
+  - `xstem` extends the stem across to the other staff.
+  - `stemless` hides the stem.
+  - `trem1` to `trem4` are tremolo strokes between two notes.
+  - `/`, `//` and `///` are tremolo strokes on a single note's stem.
+- **Lines between notes:**
+  - `-(` and `-)` draw a straight glissando.
+  - `~(` and `~)` draw a wavy glissando.
+- **Octave lines:** `8va(`, `8va)`, `8vb(`, `8vb)`
+- **Pedal:** `ped`, `ped-up`
+- **Navigation text:** `D.C.alfine`, `D.C.alcoda`, `D.S.alfine`, `D.S.alcoda`
+- **Other symbols:**
+  - `marcato` / `^` is the marcato accent.
+  - `dot` is a staccato dot.
+  - `gmark` is an ornament mark.
+- **Other:**
+  - `invisible` hides the note or rest.
+  - The `head-` prefix changes the notehead. It's part of the name, so it isn't a separate entry.
