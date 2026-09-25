@@ -13,6 +13,8 @@ from wx import GetTranslation as _
 from html import escape
 
 from abc_character_encoding import abc_text_to_unicode
+import abc_decorations
+from abc_decorations import Palette
 
 # this file contains many regular expression patterns
 # for understanding these regular expressions:
@@ -123,111 +125,11 @@ class CodeImageDescription(ValueImageDescription):
     def __init__(self, value, image_name, description, common=True):
         super(CodeImageDescription, self).__init__(value, image_name, description, common=common, show_value=True)
 
-decoration_aliases = {
-    '!>!'       : '!accent!',
-    '!^!'       : '!marcato!',
-    '!emphasis!': '!accent!',
-    '!<(!'      : '!crescendo(!',
-    '!<)!'      : '!crescendo)!',
-    '!>(!'      : '!diminuendo(!',
-    '!>)!'      : '!diminuendo)!',
-    '!+!'       : '!plus!',
-}
+decoration_aliases = {d.notation(alias): d.notation(d.name) for d in abc_decorations.CATALOG for alias in d.aliases}
 
-decoration_to_description = {
-    '.'                : _('staccato mark'),
-    '~'                : _('Irish roll'),
-    'H'                : _('fermata'),
-    'L'                : _('accent or emphasis'),
-    'M'                : _('lowermordent'),
-    'O'                : _('coda'),
-    'P'                : _('uppermordent'),
-    'S'                : _('segno'),
-    'T'                : _('trill'),
-    'u'                : _('down-bow'),
-    'v'                : _('up-bow'),
-    '!trill!'          : _('trill'),
-    '!trill(!'         : _('start of an extended trill'),
-    '!trill)!'         : _('end of an extended trill'),
-    '!lowermordent!'   : _('lower mordent'),
-    '!uppermordent!'   : _('upper mordent'),
-    '!mordent!'        : _('mordent'),
-    '!pralltriller!'   : _('pralltriller'),
-    '!roll!'           : _('Irish roll'),
-    '!turn!'           : _('turn or gruppetto'),
-    '!turnx!'          : _('a turn mark with a line through it'),
-    '!invertedturn!'   : _('an inverted turn mark'),
-    '!invertedturnx!'  : _('an inverted turn mark with a line through it'),
-    '!arpeggio!'       : _('arpeggio'),
-    '!>!'              : _('accent or emphasis'),
-    '!accent!'         : _('accent or emphasis'),
-    '!emphasis!'       : _('accent or emphasis'),
-    '!^!'              : _('marcato'),
-    '!marcato!'        : _('marcato'),
-    '!fermata!'        : _('fermata or hold'),
-    '!invertedfermata!': _('upside down fermata'),
-    '!tenuto!'         : _('tenuto'),
-    '!0!'              : _('no finger'),
-    '!1!'              : _('thumb'),
-    '!2!'              : _('index finger'),
-    '!3!'              : _('middle finger'),
-    '!4!'              : _('ring finger'),
-    '!5!'              : _('little finger'),
-    '!+!'              : _('left-hand pizzicato'),
-    '!plus!'           : _('left-hand pizzicato'),
-    '!snap!'           : _('snap-pizzicato'),
-    '!slide!'          : _('slide up to a note'),
-    '!-(!'             : _('Marks a portamento between the note after this decoration and the following note. Must be followed by a single note, then !-)!, then the note to which the portamento connects.'),
-    '!-)!'             : _('Marks the note to which a portamento connects. Must be preceded by the note from which the portamento begins, decorated with !-(!.'),
-    '!~(!'             : _('Marks a chromatic glissando between the note after this decoration and the following note. Must be followed by a single note, then !~)!, then the note to which the glissando connects.'),
-    '!~)!'             : _('Marks the note to which a chromatic glissando connects. Must be preceded by the note from which the glissando begins, decorated with !~(!.'),
-    '!fall!'           : _('Adds a fall-off slide after the note it decorates.'),
-    '!wedge!'          : _('staccatissimo or spiccato'),
-    '!upbow!'          : _('up-bow'),
-    '!downbow!'        : _('down-bow'),
-    '!open!'           : _('open string or harmonic'),
-    '!thumb!'          : _('cello thumb symbol'),
-    '!breath!'         : _('breath mark'),
-    '!pppp!'           : _('pianissimo possibile'),
-    '!ppp!'            : _('pianississimo'),
-    '!pp!'             : _('pianissimo'),
-    '!p!'              : _('piano'),
-    '!mp!'             : _('mezzopiano'),
-    '!mf!'             : _('mezzoforte'),
-    '!f!'              : _('forte'),
-    '!ff!'             : _('fortissimo'),
-    '!fff!'            : _('fortississimo'),
-    '!ffff!'           : _('fortissimo possibile'),
-    '!sfz!'            : _('sforzando'),
-    '!crescendo(!'     : _('start of a < crescendo mark'),
-    '!<(!'             : _('start of a < crescendo mark'),
-    '!crescendo)!'     : _('end of a < crescendo mark'),
-    '!<)!'             : _('end of a < crescendo mark'),
-    '!diminuendo(!'    : _('start of a > diminuendo mark'),
-    '!>(!'             : _('start of a > diminuendo mark'),
-    '!diminuendo)!'    : _('end of a > diminuendo mark'),
-    '!>)!'             : _('end of a > diminuendo mark'),
-    '!segno!'          : _('segno'),
-    '!coda!'           : _('coda'),
-    '!D.S.!'           : _('the letters D.S. (=Da Segno)'),
-    '!D.C.!'           : _('the letters D.C. (=either Da Coda or Da Capo)'),
-    '!dacoda!'         : _('the word "Da" followed by a Coda sign'),
-    '!dacapo!'         : _('the words "Da Capo"'),
-    '!D.C.alcoda!'     : _('the words "D.C. al Coda"'),
-    '!D.C.alfine!'     : _('the words "D.C. al Fine"'),
-    '!D.S.alcoda!'     : _('the words "D.S. al Coda"'),
-    '!D.S.alfine!'     : _('the words "D.S. al Fine"'),
-    '!fine!'           : _('the word "fine"'),
-    '!rbend!'          : _('end of a repeat bracket, drawn with a vertical end line'),
-    '!rbstop!'         : _('end of a repeat bracket, drawn without a vertical end line'),
-    '!shortphrase!'    : _('vertical line on the upper part of the staff'),
-    '!mediumphrase!'   : _('vertical line on the upper part of the staff, extending down to the centre line'),
-    '!longphrase!'     : _('vertical line on the upper part of the staff, extending 3/4 of the way down'),
-    '!ped!'            : _('sustain pedal down'),
-    '!ped-up!'         : _('sustain pedal up'),
-    '!editorial!'      : _('editorial accidental above note'),
-    '!courtesy!'       : _('courtesy accidental between parentheses'),
-}
+decoration_to_description = {notation: _(d.description) for d in abc_decorations.CATALOG for notation in d.notations}
+decoration_to_description.update({  # a U: letter of the default table is described as the decoration it stands for
+    letter: _(abc_decorations.lookup(name).description) for letter, name in abc_decorations.DEFAULT_USER_SYMBOLS.items()})
 
 ABC_TUNE_HEADER_NO = 0
 ABC_TUNE_HEADER_FIRST = 1
@@ -830,82 +732,9 @@ class AbcDecoration(AbcBodyElement):
         return html
 
 
-class AbcDynamicsDecoration(AbcDecoration):
-    values = [
-        '!ffff!', '!fff!', '!ff!', '!f!', '!mf!', '!mp!', '!p!', '!pp!', '!ppp!', '!pppp!', '!sfz!',
-        '!crescendo(!',  '!<(!',
-        '!crescendo)!',  '!<)!',
-        '!diminuendo(!', '!>(!',
-        '!diminuendo)!', '!>)!'
-    ]
-    def __init__(self):
-        super(AbcDynamicsDecoration, self).__init__('Dynamics', AbcDynamicsDecoration.values, display_name=_('Dynamics'))
-
-
-class AbcFingeringDecoration(AbcDecoration):
-    values = ['!0!', '!1!', '!2!', '!3!', '!4!', '!5!']
-    def __init__(self):
-        super(AbcFingeringDecoration, self).__init__('Fingering', AbcFingeringDecoration.values, display_name=_('Fingering'))
-
-
-class AbcOrnamentDecoration(AbcDecoration):
-    values = [
-        '!trill!',
-        '!trill(!',
-        '!trill)!',
-        '!mordent!', #'!lowermordent!',
-        '!pralltriller!', #'!uppermordent!',
-        '!roll!',
-        '!turn!',
-        '!turnx!',
-        '!invertedturn!',
-        '!invertedturnx!',
-        '!arpeggio!'
-    ]
-    def __init__(self):
-        super(AbcOrnamentDecoration, self).__init__('Ornament', AbcOrnamentDecoration.values, display_name=_('Ornament'))
-
-
-class AbcDirectionDecoration(AbcDecoration):
-    values = [
-        '!segno!',
-        '!coda!',
-        '!D.S.!',
-        '!D.C.!',
-        '!dacoda!',
-        '!dacapo!',
-        '!D.C.alcoda!',
-        '!D.C.alfine!',
-        '!D.S.alcoda!',
-        '!D.S.alfine!',
-        '!fine!'
-    ]
-    def __init__(self):
-        super(AbcDirectionDecoration, self).__init__('Direction', AbcDirectionDecoration.values, display_name=_('Direction'))
-
-
-class AbcArticulationDecoration(AbcDecoration):
-    values = [
-        '.',
-        '!tenuto!',
-        '!accent!', '!>!', '!emphasis!',
-        '!marcato!', '!^!',
-        '!wedge!',
-        '!invertedfermata!',
-        '!fermata!',
-        '!plus!', '!+!',
-        '!snap!',
-        '!slide!',
-        '!upbow!',
-        '!downbow!',
-        '!open!',
-        '!thumb!',
-        '!breath!',
-        '!ped!',
-        '!ped-up!',
-    ]
-    def __init__(self):
-        super(AbcArticulationDecoration, self).__init__('Articulation', AbcArticulationDecoration.values, display_name=_('Articulation'))
+class AbcPaletteDecoration(AbcDecoration):   # the decorations one editor palette offers
+    def __init__(self, palette):
+        super(AbcPaletteDecoration, self).__init__(palette.value, abc_decorations.palette(palette), display_name=_(palette.value))
 
 
 class AbcBrokenRhythm(AbcBodyElement):
@@ -1245,11 +1074,7 @@ class AbcStructure(object):
             AbcTuplet(),
             AbcVariantEnding(),
             AbcBar(),
-            AbcDynamicsDecoration(),
-            AbcFingeringDecoration(),
-            AbcOrnamentDecoration(),
-            AbcDirectionDecoration(),
-            AbcArticulationDecoration(),
+            *[AbcPaletteDecoration(palette) for palette in Palette],
             AbcDecoration(),
             symbol_line,
             AbcGraceNotes(),

@@ -37,10 +37,6 @@ def abc_to_xml(abc, output_filepath, mxl=False, pageFormat=None, info_messages=N
 
     if not pageFormat:
         pageFormat = []
-    if not hasattr (abc2xml, 'abc_header'): # compute grammar only once
-        abc2xml.abc_header, abc2xml.abc_voice, abc2xml.abc_scoredef, abc2xml.abc_percmap = abc2xml.abc_grammar ()
-        abc2xml.mxm = abc2xml.MusicXml()    # mxm should be set in abc2xml, otherwise the options won't work
-
     if info_messages is None:   # only information messages of abc2xml, a real error raises an exception that contains the error message
         info_messages = []      # when info_messages is not passed by the caller this is a dummy and gets lost on return
     abc2xml.info = lambda message, warn=1: info (info_messages, message, warn)

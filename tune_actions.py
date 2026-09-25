@@ -6,6 +6,8 @@ import traceback
 from collections import namedtuple
 from wx import GetTranslation as _
 from tune_elements import *
+import abc_decorations
+from abc_decorations import Palette
 from html import escape
 
 from urllib.parse import urlparse, urlencode, urlunparse, parse_qsl, quote
@@ -1133,29 +1135,22 @@ class BaseDecorationChangeAction(ValueChangeAction):
         return image_name
 
 
-class DynamicsDecorationChangeAction(BaseDecorationChangeAction):
-    def __init__(self):
-        super(DynamicsDecorationChangeAction, self).__init__('change_dynamics', AbcDynamicsDecoration.values, display_name=_('Change dynamics mark'))
+class DecorationChangeAction(BaseDecorationChangeAction):   # offers the decorations of one editor palette
+    display_names = {
+        Palette.DYNAMICS: _('Change dynamics mark'),
+        Palette.FINGERING: _('Change fingering'),
+        Palette.ORNAMENT: _('Change ornament'),
+        Palette.DIRECTION: _('Change direction marker'),
+        Palette.ARTICULATION: _('Change articulation marker'),
+    }
 
+    def __init__(self, palette):
+        super(DecorationChangeAction, self).__init__(self.action_name(palette), abc_decorations.palette(palette),
+                                                     display_name=DecorationChangeAction.display_names[palette])
 
-class FingeringDecorationChangeAction(BaseDecorationChangeAction):
-    def __init__(self):
-        super(FingeringDecorationChangeAction, self).__init__('change_fingering', AbcFingeringDecoration.values, display_name=_('Change fingering'))
-
-
-class OrnamentDecorationChangeAction(BaseDecorationChangeAction):
-    def __init__(self):
-        super(OrnamentDecorationChangeAction, self).__init__('change_ornament', AbcOrnamentDecoration.values, display_name=_('Change ornament'))
-
-
-class DirectionDecorationChangeAction(BaseDecorationChangeAction):
-    def __init__(self):
-        super(DirectionDecorationChangeAction, self).__init__('change_direction', AbcDirectionDecoration.values, display_name=_('Change direction marker'))
-
-
-class ArticulationDecorationChangeAction(BaseDecorationChangeAction):
-    def __init__(self):
-        super(ArticulationDecorationChangeAction, self).__init__('change_articulation', AbcArticulationDecoration.values, display_name=_('Change articulation marker'))
+    @staticmethod
+    def action_name(palette):
+        return 'change_' + palette.name.lower()
 
 
 class ChordNoteChangeAction(ValueChangeAction):
@@ -2432,11 +2427,7 @@ class AbcActionHandlers(object):
             MeasureRestDurationAction(),
             SlurChangeAction(),
             CombineToChordAction(),
-            DynamicsDecorationChangeAction(),
-            ArticulationDecorationChangeAction(),
-            OrnamentDecorationChangeAction(),
-            DirectionDecorationChangeAction(),
-            FingeringDecorationChangeAction(),
+            *[DecorationChangeAction(palette) for palette in Palette],
             RestVisibilityChangeAction(),
             MeasureRestVisibilityChangeAction(),
             AppoggiaturaOrAcciaccaturaChangeAction(),
@@ -2507,11 +2498,7 @@ class AbcActionHandlers(object):
             'Grace notes'            : self.create_handler(['change_appoggiatura_acciaccatura', 'remove']),
             'Multiple notes'         : self.create_handler(['add_slur', 'make_triplets', 'beam_notes', 'combine_to_chord', 'remove']),
             'Multiple notes/chords'  : self.create_handler(['add_slur', 'make_triplets', 'beam_notes', 'remove']),
-            'Dynamics'               : self.create_handler(['change_dynamics', 'remove']),
-            'Articulation'           : self.create_handler(['change_articulation', 'remove']),
-            'Ornament'               : self.create_handler(['change_ornament', 'remove']),
-            'Direction'              : self.create_handler(['change_direction', 'remove']),
-            'Fingering'              : self.create_handler(['change_fingering', 'remove']),
+            **{palette.value: self.create_handler([DecorationChangeAction.action_name(palette), 'remove']) for palette in Palette},
             'Redefinable symbol'     : self.create_handler(['change_redefinable_symbol']),
             'Chord or annotation'    : self.create_handler(['change_chord_note', 'convert_to_annotation', 'remove']),
             'Slur'                   : self.create_handler(['change_slur']),

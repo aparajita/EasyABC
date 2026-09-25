@@ -1,14 +1,15 @@
 """Tests for the parser-level contract that abc_parser.parse_abc() promises: every
 diagnostic's line number survives the header-folding and voice-splitting machinery in
-splitHeaderVoices/buildVoiceRows, node offsets survive from parse to validate, and the
-function never raises even when a tune cannot be parsed.
+splitHeaderVoices, node offsets survive from parse to validate, and the function never
+raises even when a tune cannot be parsed.
 """
 import unittest
 from unittest.mock import patch
 
 from pyparsing import ParseException, Word, alphas
 
-from abc_parser import Severity, parse_abc, abc_voice
+from abc_parser import Severity, parse_abc
+from abc_syntax import abc_voice
 
 
 def _diagnostics_with_fragment(diagnostics, fragment):
