@@ -25,6 +25,9 @@ from pyparsing import Group, one_of, Suppress, ZeroOrMore, Combine, FollowedBy
 from pyparsing import srange, CharsNotIn, StringEnd, LineEnd, White, Regex
 from pyparsing import nums, alphas, alphanums, ParseException, Forward
 import re
+import abc_decorations
+from abc_decorations import DecorationKind
+from abc_notation import NOTE_TYPES, CLEF_BY_MIDDLE_NOTE
 
 
 class Severity (Enum):
@@ -756,24 +759,6 @@ class Validator:
       table, whose occupancy is kept in XML divisions, and from the XML note's pitch element.
     - the ParseException messages in MusicXml.parse: reported by reportParseException.
     '''
-    typeMap = {1:'long', 2:'breve', 4:'whole', 8:'half', 16:'quarter', 32:'eighth', 64:'16th', 128:'32nd', 256:'64th'}
-    dynaMap = {'p':1,'pp':1,'ppp':1,'pppp':1,'f':1,'ff':1,'fff':1,'ffff':1,'mp':1,'mf':1,'sfz':1}
-    wedgeMap = {'>(':1, '>)':1, '<(':1,'<)':1,'crescendo(':1,'crescendo)':1,'diminuendo(':1,'diminuendo)':1}
-    artMap = {'.':'staccato','>':'accent','accent':'accent','wedge':'staccatissimo','tenuto':'tenuto',
-              'breath':'breath-mark','marcato':'strong-accent','^':'strong-accent','slide':'scoop',
-              'fall':'falloff'}     # non-standard, accepted for the jazz falloff
-    ornMap = {'trill':'trill-mark','T':'trill-mark','turn':'turn','uppermordent':'inverted-mordent','lowermordent':'mordent',
-              'pralltriller':'inverted-mordent','mordent':'mordent','invertedturn':'inverted-turn'}
-    tecMap = {'upbow':'up-bow', 'downbow':'down-bow', 'plus':'stopped','open':'open-string','snap':'snap-pizzicato',
-              'thumb':'thumb-position'}
-    capoMap = {'fine':1, 'D.S.':1, 'D.C.':1, 'dacapo':1, 'dacoda':1, 'coda':1, 'segno':1}
-    slurMap = {'(':1, '.(':1, '(,':1, "('":1, '.(,':1, ".('":1}
-    clefLineMap = {'B':'treble', 'G':'alto1', 'E':'alto2', 'C':'alto', 'A':'tenor', 'F':'bass3', 'D':'bass'}
-    uSyms = {'~':'roll', 'H':'fermata','L':'>','M':'lowermordent','O':'coda',
-             'P':'uppermordent','S':'segno','T':'trill','u':'upbow','v':'downbow'}
-    tremoloPairs = ['/-','//-','///-','////-']
-    tremoloSingles = ['/','//','///']
-    stringDecos = '0123456'     # string numbers are handled as technical notations
 
     def __init__ (s, run):
         s.run = run
@@ -788,7 +773,7 @@ class Validator:
         s.tupnts = 0            # tuplet notes seen since the tuplet started
         s.trem = 0              # number of bars for tremolo
         s.intrem = 0            # inside a tremolo pair (duration doubling)
-        s.usrSyms = dict (s.uSyms)      # user defined symbols
+        s.usrSyms = dict (abc_decorations.DEFAULT_USER_SYMBOLS)     # user defined symbols
         s.nextdecos = []        # decorations pending for the next note
         s.nextdecosNode = None  # the deco node the first pending decoration came from
         s.ties = {}             # {(step, octave): overlay voice number} for all open ties
@@ -879,7 +864,7 @@ class Validator:
         except ValueError:
             s.warn ('illegal unit length:%s, 1/8 assumed' % field, position)
             unitL = DEFAULT_UNIT_LENGTH
-        if len (unitL) == 1 or unitL[1] not in s.typeMap:
+        if len (unitL) == 1 or unitL[1] not in NOTE_TYPES:
             s.warn ('L:%s is not allowed, 1/8 assumed' % field, position)
             unitL = DEFAULT_UNIT_LENGTH
         return unitL
@@ -998,12 +983,11 @@ class Validator:
     def check_staff_decorations (s, node):  # staff-level decorations are consumed here, note decorations wait for the next note
         for d in node.t:
             d = s.usrSyms.get (d, d).strip ('!+')
-            if d in s.dynaMap or d in s.wedgeMap or d.startswith ('8v') or d in ['ped', 'ped-up'] or d in s.capoMap: continue
-            elif d == '(' or d == '.(': continue
-            elif d in s.tremoloPairs:
-                s.ntup, s.tupnts, s.trem, s.intrem = 2, 0, len (d) - 1, 1
-            elif d in s.tremoloSingles: s.trem = - len (d)
-            elif d == 'rbstop': continue
+            kind = abc_decorations.classify (d)
+            if kind is DecorationKind.TREMOLO_PAIR:
+                s.ntup, s.tupnts, s.trem, s.intrem = 2, 0, abc_decorations.TREMOLO_PAIRS [d], 1
+            elif kind is DecorationKind.TREMOLO_SINGLE: s.trem = - abc_decorations.TREMOLO_SINGLES [d]
+            elif kind.applies_to_staff: continue
             else:
                 s.nextdecos.append (d)
                 if s.nextdecosNode is None: s.nextdecosNode = node
@@ -1059,7 +1043,7 @@ class Validator:
         if num == DOTTED_NUMERATOR and noMsrRest: den = den // 2
         if num == DOUBLE_DOTTED_NUMERATOR and noMsrRest: den = den // 4
         if isgrace and den <= GRACE_MAX_DENOMINATOR: den = GRACE_DENOMINATOR
-        if den not in s.typeMap:
+        if den not in NOTE_TYPES:
             s.warn ('illegal duration %d/%d' % (nnum, nden), s.node_position (n))
 
     def check_percussion_map (s, n, acc, note, oct):    # a percussion voice with I:percmap must map every pitch
@@ -1106,12 +1090,7 @@ class Validator:
             if not tupnotation: return
             if tupnotation == 'stop' or tupnotation == 'single': s.trem = 0
         if not decos: return
-        unhandled = []
-        for d in decos:
-            if d in s.slurMap or d == 'fermata' or d == 'H' or d == 'arpeggio': continue
-            if d in ['~(', '~)', '-(', '-)']: continue      # glissando and slide
-            if d in s.artMap or d in s.ornMap or d in ['trill(', 'trill)'] or d in s.tecMap or d in s.stringDecos: continue
-            unhandled.append (d)
+        unhandled = [d for d in decos if not abc_decorations.classify (d).applies_to_note]
         if unhandled:
             s.warn ('unhandled note decorations: %s' % unhandled, s.node_position (decosNode))
 
@@ -1180,7 +1159,7 @@ class Validator:
     def check_unit_length (s, field, position):
         try: s.unitLcur = tuple (map (int, field.split ('/')))
         except ValueError: s.unitLcur = DEFAULT_UNIT_LENGTH
-        if len (s.unitLcur) == 1 or s.unitLcur[1] not in s.typeMap:
+        if len (s.unitLcur) == 1 or s.unitLcur[1] not in NOTE_TYPES:
             s.warn ('L:%s is not allowed, 1/8 assumed' % field, position)
             s.unitLcur = DEFAULT_UNIT_LENGTH
 
@@ -1215,7 +1194,7 @@ class Validator:
             nUp = note.upper ()
             octnum = (4 if nUp == note else 5) + (len (octstr) if "'" in octstr else -len (octstr))
             gtrans = (3 if nUp in 'AFD' else 4) - octnum
-            if clef not in ['perc', 'none']: clef = s.clefLineMap [nUp]
+            if clef not in ['perc', 'none']: clef = CLEF_BY_MIDDLE_NOTE [nUp]
         if clef:
             s.gtrans = gtrans
             if clef == 'none': return       # the clef without a sign ends the field's effect here

@@ -218,6 +218,8 @@ decoration_to_description = {
     '!D.S.alcoda!'     : _('the words "D.S. al Coda"'),
     '!D.S.alfine!'     : _('the words "D.S. al Fine"'),
     '!fine!'           : _('the word "fine"'),
+    '!rbend!'          : _('end of a repeat bracket, drawn with a vertical end line'),
+    '!rbstop!'         : _('end of a repeat bracket, drawn without a vertical end line'),
     '!shortphrase!'    : _('vertical line on the upper part of the staff'),
     '!mediumphrase!'   : _('vertical line on the upper part of the staff, extending down to the centre line'),
     '!longphrase!'     : _('vertical line on the upper part of the staff, extending 3/4 of the way down'),

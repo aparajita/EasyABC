@@ -3,11 +3,8 @@ syllable slot of the note it precedes, and an unescaped slash splits the syllabl
 the first grace note and that principal note.
 """
 import unittest
-import warnings
 
-with warnings.catch_warnings():
-    warnings.simplefilter('ignore')     # pyparsing deprecation warnings from abc2xml's grammar
-    import abc2xml
+from tests.abc2xml_support import parse_score
 
 TUNE_HEADER = 'X:1\nM:4/4\nL:1/4\nK:C\n'
 GRACEWORD = '%%graceword 1\n'
@@ -16,12 +13,7 @@ GRACEWORD = '%%graceword 1\n'
 def convert(body, header=GRACEWORD):
     """Converts a tune and returns (note label, lyrics) per note: the label is the step,
     prefixed with 'g' for a grace note or 'z' for a rest; lyrics are (syllabic, text, extend)."""
-    if not hasattr(abc2xml, 'abc_header'):
-        abc2xml.abc_header, abc2xml.abc_voice, abc2xml.abc_scoredef, abc2xml.abc_percmap = abc2xml.abc_grammar()
-        abc2xml.mxm = abc2xml.MusicXml()
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        score = abc2xml.mxm.parse(header + TUNE_HEADER + body)
+    score = parse_score(header + TUNE_HEADER + body)
     notes = []
     for note in score.iter('note'):
         pitch = note.find('pitch')
