@@ -34,6 +34,7 @@ VERSION = 245
 SONGSCRIBE_SOFTWARE = 'SongScribe 2.0.0'
 SONGSCRIBE_MUSICXML_VERSION = '4.0'
 SONGSCRIBE_EXT = '.musicxml'
+SONGSCRIBE_SECOND_ENDING = '2'  # with --songscribe, this ending discontinues at the plain bar ending its first measure
 
 python3 = sys.version_info[0] > 2
 lmap = lambda f, xs: list (map (f, xs))   # eager map for python 3
@@ -1097,6 +1098,7 @@ class MusicXml:
         s.acciatura = 0 # next grace element gets acciatura attribute
         s.voltaEnd = '' # ending type an rbend/rbstop decoration gives the volta closed in this measure
         overlay = 0
+        plainBarVoltaEnd = ''  # ending type a plain right bar of this measure gives the second ending it opened
         maat = E.Element ('measure', number = str(i))
         if s.linebrk:   # there was a line break in the previous measure
             e = E.Element ('print')     # before the fields: SongScribe drops a key that precedes its line's print
@@ -1118,6 +1120,8 @@ class MusicXml:
                     s.mkBarline (maat, 'left', lev + 1, style='heavy-light', dir='forward', ending=volta)
                 else:               # bar must be a volta number
                     s.mkBarline (maat, 'left', lev + 1, ending=bar)
+                if s.songscribe and s.curVolta == SONGSCRIBE_SECOND_ENDING:
+                    plainBarVoltaEnd = abc_decorations.musicxml ('rbstop')
             elif x.name == 'rbar':
                 bar = x.t[0]
                 if bar == '.|':
@@ -1130,7 +1134,8 @@ class MusicXml:
                     s.mkBarline (maat, 'right', lev + 1, style='none')
                 elif '[' in bar or ']' in bar:
                     s.mkBarline (maat, 'right', lev + 1, style='light-heavy')
-                elif bar == '|' and s.voltaEnd:   # normale barline hoeft niet, behalve om een volta te stoppen
+                elif bar == '|' and (s.voltaEnd or plainBarVoltaEnd):   # normale barline hoeft niet, behalve om een volta te stoppen
+                    s.voltaEnd = s.voltaEnd or plainBarVoltaEnd   # an rbend/rbstop decoration in the measure wins
                     s.mkBarline (maat, 'right', lev + 1, style='regular')
                 elif bar[0] == '&': overlay = 1
             elif x.name == 'tup':
@@ -1157,6 +1162,7 @@ class MusicXml:
             elif x.name == 'broken': s.reportAtNode (x, 'error in broken rhythm: %s' % x.t[0])   # no note on one of its sides
             elif x.name == 'accia': s.acciatura = 1
             elif x.name == 'linebrk':
+                plainBarVoltaEnd = ''  # a second ending whose measure spans a line stays open
                 s.supports_tag = 1
                 if it > 0 and t[it -1].name == 'lbar':  # we are at start of measure
                     e = E.Element ('print')             # output linebreak now
