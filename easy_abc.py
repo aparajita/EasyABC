@@ -1296,10 +1296,7 @@ class MyApp(wx.App):
         #dlg.Destroy()
         recent_file = self.settings.get('recentfiles', '').split('|')[0]
         if recent_file and os.path.exists(recent_file):
-            path = recent_file
-
-        if path :
-            self.frame.document.load_or_import(path)
+            self.frame.document.load_or_import(recent_file)
 
     def OnInit(self):
         try:
