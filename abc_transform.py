@@ -20,6 +20,7 @@ import re
 from collections import namedtuple
 from fractions import Fraction
 
+import abc_decorations
 from abc_tune import comment_pattern
 from aligner import bar_sep_without_space
 from constants import line_end_re, program_name
@@ -27,22 +28,26 @@ from tune_model import text_to_lines
 
 all_notes = "C,, D,, E,, F,, G,, A,, B,, C, D, E, F, G, A, B, C D E F G A B c d e f g a b c' d' e' f' g' a' b' c'' d'' e'' f'' g'' a'' b''".split()
 
-# Decorations abcm2ps has no glyph for, defined for it in the ABC handed to it.
+# Decorations defined for abcm2ps in the ABC handed to it: those it has no glyph for, and
+# the navigation phrases it would otherwise centre on their anchor.
 #
 # %%deco takes name, drawing function, PostScript routine, height, and the widths it
-# claims left and right of its anchor. Function 8 anchors on the notehead itself — the
-# highest one of a chord — at the x abcm2ps uses for the head, so an accidental in front
-# of the note does not drag the anchor left with it. The routine shifts right from there
-# to clear the head and an up-stem and leave a gap of roughly two fifths of a staff space
-# after them. An unqualified %%beginps block reaches SVG and PostScript output alike, so
-# the score panel, printing and PS export all draw the same outline.
+# claims left and right of its anchor; abcm2ps keeps other decorations and annotations
+# out of that span. It rejects a name longer than 15 characters. An unqualified %%beginps
+# block reaches SVG and PostScript output alike, so the score panel, printing and PS
+# export all draw the same thing.
 #
-# The outline is brassFallLipShort from Bravura, Copyright (c) Steinberg Media
+# Function 8 anchors on the notehead itself — the highest one of a chord — at the x
+# abcm2ps uses for the head, so an accidental in front of the note does not drag the
+# anchor left with it. The fall routine shifts right from there to clear the head and an
+# up-stem and leave a gap of roughly two fifths of a staff space after them.
+#
+# The fall outline is brassFallLipShort from Bravura, Copyright (c) Steinberg Media
 # Technologies GmbH, licensed under the SIL Open Font License 1.1; the notice and the
 # license are in third-party-licenses.txt. Bravura draws on a 1000-unit em with 250 units
 # to the staff space, and abcm2ps puts 6 points there, hence the .024 scale. Both spaces
 # run y upwards, so the outline needs no reflection.
-abcm2ps_decoration_definitions = '''%%deco fall 8 fall 9 0 19
+fall_definition = '''%%deco fall 8 fall 9 0 19
 %%beginps
 /fall{
     gsave T 6.5 0 T .024 dup scale
@@ -58,6 +63,44 @@ abcm2ps_decoration_definitions = '''%%deco fall 8 fall 9 0 19
     fill grestore}!
 %%endps
 '''
+
+ABCM2PS_MAX_DECORATION_NAME = 15
+ABCM2PS_MAX_DECORATION_WIDTH = 80   # abcm2ps rejects a longer claimed width as abnormal
+# abcm2ps's default tempo font, so the phrases match tempo names. Its SVG output names the
+# font serif, as abcm2ps writes its own tempo font, and the score panel draws both alike;
+# PostScript has no font of that name, so it gets one, made from the PostScript font.
+NAVIGATION_FONT = 'serifBold'
+NAVIGATION_POSTSCRIPT_FONT = 'Times-Bold'
+NAVIGATION_FONT_SIZE = 15       # also the height of a phrase
+NAVIGATION_FONT_AVERAGE_ADVANCE = .5    # in em, generous so the claimed span covers the printed phrase
+
+
+def navigation_words_definitions():
+    '''Function 3 places a phrase above the staff, as abcm2ps does its own D.C.alfine. The
+    navwords routine is abcm2ps's dacs in the tempo font, with showr in place of showc, so
+    the phrase ends at its anchor: the barline when the decoration stands before one. It
+    claims its width to the left only, and no more than abcm2ps accepts, so a longer phrase
+    keeps only its right end clear of other marks. The nosvg block defines the font for
+    PostScript output only: abcm2ps's SVG interpreter has no definefont.'''
+    parts = ['''%%%%beginps nosvg
+/%s/%s findfont definefont pop
+%%%%endps
+%%%%beginps
+/navwords{/%s %d selectfont 3 add M showr}!
+%%%%endps
+''' % (NAVIGATION_FONT, NAVIGATION_POSTSCRIPT_FONT, NAVIGATION_FONT, NAVIGATION_FONT_SIZE)]
+    for d in abc_decorations.abcm2ps_navigation_words():
+        if len(d.name) > ABCM2PS_MAX_DECORATION_NAME:
+            raise ValueError('abcm2ps rejects the decoration name %s, longer than %d characters'
+                             % (d.name, ABCM2PS_MAX_DECORATION_NAME))
+        text = d.musicxml.text
+        width = min(round(len(text) * NAVIGATION_FONT_AVERAGE_ADVANCE * NAVIGATION_FONT_SIZE),
+                    ABCM2PS_MAX_DECORATION_WIDTH)
+        parts.append('%%%%deco %s 3 navwords %d %d 0 %s\n' % (d.name, NAVIGATION_FONT_SIZE, width, text))
+    return ''.join(parts)
+
+
+abcm2ps_decoration_definitions = fall_definition + navigation_words_definitions()
 
 
 def str2fraction(s):

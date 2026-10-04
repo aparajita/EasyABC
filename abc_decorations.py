@@ -72,6 +72,7 @@ class JumpSound (NamedTuple):   # the <sound> attribute that makes playback foll
 class NavigationWords (NamedTuple):
     text: str
     sound: JumpSound
+    abcm2ps_draws: bool = False     # True leaves abcm2ps its own drawing; otherwise abc_transform defines text, right-aligned
 
 
 class Palette (Enum):   # the editor's decoration palettes
@@ -150,10 +151,14 @@ CATALOG = (
     Decoration ('D.S.', 'the letters D.S. (=Da Segno)', K.NAVIGATION_WORDS, NavigationWords ('D.S.', DAL_SEGNO), P.DIRECTION),
     Decoration ('D.C.', 'the letters D.C. (=either Da Coda or Da Capo)', K.NAVIGATION_WORDS, NavigationWords ('D.C.', DA_CAPO), P.DIRECTION),
     Decoration ('dacoda', 'the word "Da" followed by a Coda sign', K.NAVIGATION_WORDS,
-                NavigationWords ('To Coda', JumpSound ('tocoda', 'coda')), P.DIRECTION),
+                NavigationWords ('To Coda', JumpSound ('tocoda', 'coda'), abcm2ps_draws=True), P.DIRECTION),
     Decoration ('dacapo', 'the words "Da Capo"', K.NAVIGATION_WORDS, NavigationWords ('D.C.', DA_CAPO), P.DIRECTION),
     Decoration ('D.C.alcoda', 'the words "D.C. al Coda"', K.NAVIGATION_WORDS, NavigationWords ('D.C. al Coda', DA_CAPO), P.DIRECTION),
     Decoration ('D.C.alfine', 'the words "D.C. al Fine"', K.NAVIGATION_WORDS, NavigationWords ('D.C. al Fine', DA_CAPO), P.DIRECTION),
+    Decoration ('alfinerepeat', 'the words "D.C. al Fine with repeats"', K.NAVIGATION_WORDS,
+                NavigationWords ('D.C. al Fine with repeats', DA_CAPO)),
+    Decoration ('alfinenorepeat', 'the words "D.C. al Fine no repeat"', K.NAVIGATION_WORDS,
+                NavigationWords ('D.C. al Fine no repeat', DA_CAPO)),
     Decoration ('D.S.alcoda', 'the words "D.S. al Coda"', K.NAVIGATION_WORDS, NavigationWords ('D.S. al Coda', DAL_SEGNO), P.DIRECTION),
     Decoration ('D.S.alfine', 'the words "D.S. al Fine"', K.NAVIGATION_WORDS, NavigationWords ('D.S. al Fine', DAL_SEGNO), P.DIRECTION),
     Decoration ('fine', 'the word "fine"', K.NAVIGATION_WORDS, NavigationWords ('Fine', JumpSound ('fine', 'yes')), P.DIRECTION),
@@ -244,3 +249,7 @@ def musicxml (name):    # what abc2xml writes for name, whose kind is not UNKNOW
 
 def palette (p):        # the notations the editor offers in palette p, in palette order
     return [notation for d in CATALOG if d.palette is p for notation in d.notations]
+
+
+def abcm2ps_navigation_words ():    # the navigation phrases abc_transform defines for abcm2ps
+    return [d for d in CATALOG if d.kind is DecorationKind.NAVIGATION_WORDS and not d.musicxml.abcm2ps_draws]

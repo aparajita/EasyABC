@@ -3,6 +3,8 @@ sound element makes playback follow the jump.
 """
 import unittest
 
+import abc_decorations
+from abc_decorations import DecorationKind
 from tests.abc2xml_support import parse_score
 
 TUNE_HEADER = 'X:1\nM:4/4\nL:1/4\nK:C\n'
@@ -29,6 +31,8 @@ class NavigationMarkTests(unittest.TestCase):
             ('dacapo', 'words', 'D.C.', {'dacapo': 'yes'}),
             ('dacoda', 'words', 'To Coda', {'tocoda': 'coda'}),
             ('D.C.alfine', 'words', 'D.C. al Fine', {'dacapo': 'yes'}),
+            ('alfinerepeat', 'words', 'D.C. al Fine with repeats', {'dacapo': 'yes'}),
+            ('alfinenorepeat', 'words', 'D.C. al Fine no repeat', {'dacapo': 'yes'}),
             ('D.C.alcoda', 'words', 'D.C. al Coda', {'dacapo': 'yes'}),
             ('D.S.alfine', 'words', 'D.S. al Fine', {'dalsegno': 'segno'}),
             ('D.S.alcoda', 'words', 'D.S. al Coda', {'dalsegno': 'segno'}),
@@ -36,6 +40,14 @@ class NavigationMarkTests(unittest.TestCase):
         for decoration, tag, text, sound in cases:
             with self.subTest(decoration):
                 self.assertEqual(directions('!%s!C D E F|]\n' % decoration), [('above', tag, text, sound)])
+
+    def test_navigation_words_are_right_aligned(self):
+        for d in abc_decorations.CATALOG:
+            if d.kind is not DecorationKind.NAVIGATION_WORDS:
+                continue
+            with self.subTest(d.name):
+                words = parse_score(TUNE_HEADER + '!%s!C D E F|]\n' % d.name).find('.//words')
+                self.assertEqual((words.get('justify'), words.get('halign')), ('right', 'right'))
 
 
 if __name__ == '__main__':

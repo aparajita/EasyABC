@@ -19,10 +19,11 @@ from collections import namedtuple
 import wx
 from wx import GetTranslation as _
 
+from abc_tools import get_default_path_for_executable
 from appearance import DEFAULT_NOTE_HIGHLIGHT as default_note_highlight_color, \
     DEFAULT_NOTE_HIGHLIGHT_FOLLOW as default_note_highlight_follow_color, current_appearance
 from background_threads import pypm
-from constants import control_margin, cwd, default_midi_volume, default_midi_instrument, default_midi_pan
+from constants import control_margin, default_midi_volume, default_midi_instrument, default_midi_pan
 from generalmidi import general_midi_instruments
 from wxhelper import WX4
 
@@ -116,7 +117,7 @@ class AbcFileSettingsFrame(wx.Panel):
             path_choices = self.keep_existing_paths(path_choices)
             path_choices = self.append_exe(current_path, path_choices)
             if entry.add_default:
-                path_choices = self.append_exe(self.get_default_path(entry.name), path_choices)
+                path_choices = self.append_exe(get_default_path_for_executable(entry.name), path_choices)
             control = wx.ComboBox(self, wx.ID_ANY, size=wx.Size(450,22),choices=path_choices, style=wx.CB_DROPDOWN)
             # [SS] 1.3.6.4 2015-12-23
             if current_path:
@@ -274,14 +275,6 @@ class AbcFileSettingsFrame(wx.Panel):
             if path and os.path.exists(path):
                 result.append(path)
         return result
-
-    def get_default_path(self, executable):
-        if wx.Platform == "__WXMSW__":
-            return os.path.join(cwd, 'bin', '%s.exe' % executable)
-        elif wx.Platform == "__WXMAC__":
-            return os.path.join(cwd, 'bin', executable)
-        else:
-            return os.path.join(cwd, 'bin', executable)
 
 
 class MyChordPlayPage (wx.Panel):

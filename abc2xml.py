@@ -820,7 +820,7 @@ class MusicXml:
                 s.navigationDirection (maat, E.Element (d), abc_decorations.musicxml (d), lev, gstaff)
             elif kind is DecorationKind.NAVIGATION_WORDS:
                 mark = abc_decorations.musicxml (d)
-                words = E.Element ('words'); words.text = mark.text
+                words = E.Element ('words', justify='right', halign='right'); words.text = mark.text   # ends at its anchor, as engravers set these phrases
                 s.navigationDirection (maat, words, mark.sound, lev, gstaff)
             elif kind is DecorationKind.SLUR_START: s.slurbeg.append (d)   # start slur on next note
             elif kind is DecorationKind.TREMOLO_PAIR:   # duplet tremolo sequence
