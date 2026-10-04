@@ -34,9 +34,8 @@ all_notes = "C,, D,, E,, F,, G,, A,, B,, C, D, E, F, G, A, B, C D E F G A B c d 
 # highest one of a chord — at the x abcm2ps uses for the head, so an accidental in front
 # of the note does not drag the anchor left with it. The routine shifts right from there
 # to clear the head and an up-stem and leave a gap of roughly two fifths of a staff space
-# after them. An
-# unqualified %%beginps block reaches SVG and PostScript output alike, so the score panel,
-# printing and PS export all draw the same outline.
+# after them. An unqualified %%beginps block reaches SVG and PostScript output alike, so
+# the score panel, printing and PS export all draw the same outline.
 #
 # The outline is brassFallLipShort from Bravura, Copyright (c) Steinberg Media
 # Technologies GmbH, licensed under the SIL Open Font License 1.1; the notice and the
