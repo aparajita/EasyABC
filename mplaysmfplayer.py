@@ -92,14 +92,18 @@ class MPlaySMFPlayer(MidiPlayer):
         self.pause = False
 
     def Seek(self, time):
-        if time > self.Length() or time < 0:
+        if self.midi_file is None or time > self.Length() or time < 0:
             return
         setsong(self.midi_file, goto=time)
-        
+
     def Length(self):
+        if self.midi_file is None:
+            return 0
         return self.midi_file.playing_time-960
 
     def Tell(self):
+        if self.midi_file is None:
+            return 0
         return self.midi_file.getsongposition()
 
     @property

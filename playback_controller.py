@@ -594,6 +594,8 @@ class PlaybackController(object):
             frame.play_button.SetBitmap(frame.pause_bitmap)
             frame.progress_slider.SetRange(0, int(self.mc.Length())) #FAU:MIDIPLAY: mplay might return a float. thus forcing an int
             frame.progress_slider.SetValue(0)
+            # the seek slider is shown only once the player holds a file it can seek
+            self.flip_tempobox(True)
             self.OnBpmSlider(None)
             self.update_playback_rate()
             #FAU:MIDIPLAY: The next 'if' was when using MediaCtrl which is not used anymore. Todo: remove the corresponding code if confirmed
@@ -801,9 +803,6 @@ class PlaybackController(object):
             frame.play_button.SetBitmap(frame.pause_bitmap)
         else:
             remove_repeats = evt.ControlDown() or evt.CmdDown()
-            # 1.3.6.3 [SS] 2015-05-04
-            if not frame.settings['midiplayer_path']:
-                self.flip_tempobox(True)
             frame.bpm_slider.Enabled = self.mc.supports_tempo_change_while_playing
             #self.play_panel.Show(not self.settings['midiplayer_path']) # 1.3.6.2 [JWdJ] 2015-02
             # self.toolbar.Realize() # 1.3.6.3 [JWDJ] fixes toolbar repaint bug
