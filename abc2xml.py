@@ -35,6 +35,12 @@ SONGSCRIBE_SOFTWARE = 'SongScribe 2.0.0'
 SONGSCRIBE_MUSICXML_VERSION = '4.0'
 SONGSCRIBE_EXT = '.musicxml'
 SONGSCRIBE_SECOND_ENDING = '2'  # with --songscribe, this ending discontinues at the plain bar ending its first measure
+# SongScribe rejects a file as corrupt when a tuplet's <actual-notes> is outside this range: TupletGrade
+SONGSCRIBE_MIN_TUPLET = 2
+SONGSCRIBE_MAX_TUPLET = 7
+
+class SongScribeError (Exception):  # the tune holds what SongScribe cannot open; the reason is already reported
+    pass
 
 python3 = sys.version_info[0] > 2
 lmap = lambda f, xs: list (map (f, xs))   # eager map for python 3
@@ -128,6 +134,11 @@ def addElemT (parent, tag, text, level):
     addElem (parent, e, level)
     return e
     
+def dotted (num, den):  # the (den, number of dots) of note value num/den, when num/den is a dotted value of 1/den
+    if num == 3: return den // 2, 1
+    if num == 7: return den // 4, 2
+    return den, 0
+
 def mkTmod (tmnum, tmden, lev):
     tmod = E.Element ('time-modification')
     addElemT (tmod, 'actual-notes', str (tmnum), lev + 1)
@@ -374,6 +385,7 @@ class MusicXml:
         s.tupnts = []       # all tuplet modifiers with corresp. durations: [(duration, modifier), ...]
         s.irrtup = 0        # 1 if an irregular tuplet
         s.ntype = ''        # the normal-type of a tuplet (== duration type of a normal tuplet note)
+        s.ndots = 0         # the number of dots of the normal-type
         s.unitL =  (1, 8)   # default unit length
         s.unitLcur = (1, 8) # unit length of current voice
         s.keyAlts = {}      # alterations implied by key
@@ -489,8 +501,7 @@ class MusicXml:
         rdvs = dvs                      # real duration (will be 0 for chord/grace)
         num, den = simplify (num, den * 4)      # scale by 1/4 for NOTE_TYPES
         ndot = 0
-        if num == 3 and noMsrRest: ndot = 1; den = den // 2 # look for dotted notes
-        if num == 7 and noMsrRest: ndot = 2; den = den // 4
+        if noMsrRest: den, ndot = dotted (num, den)
         nt = E.Element ('note')
         if isgrace:                     # a grace note (and possibly a chord note)
             grace = E.Element ('grace')
@@ -559,7 +570,8 @@ class MusicXml:
         if s.ntup >= 0:                 # add time modification element for tuplet notes
             tmod = mkTmod (s.tmnum, s.tmden, lev + 1)
             addElem (nt, tmod, lev + 1)
-            if s.ntup > 0 and not s.tupnts: tupnotation = 'start'
+            # the bracket starts on the first real note: a grace or chord note before it has rdvs == 0
+            if rdvs and s.ntup > 0 and not any (dur for dur, tmod in s.tupnts): tupnotation = 'start'
             s.tupnts.append ((rdvs, tmod))      # remember all tuplet modifiers with corresp. durations
             if s.ntup == 0:             # last tuplet note (and possible chord notes there after)
                 if rdvs: tupnotation = 'stop'   # only insert notation in the real note (rdvs > 0)
@@ -588,13 +600,16 @@ class MusicXml:
             durs = [dur for dur, tmod in s.tupnts if dur > 0]
             ndur = sum (durs) // s.tmnum    # duration of the normal type
             s.irrtup = any ((dur != ndur) for dur in durs)  # irregular tuplet
-            tix = 16 * s.divisions // ndur  # index in NOTE_TYPES of normal-type duration
-            if tix in NOTE_TYPES:
-                s.ntype = str (NOTE_TYPES [tix]) # the normal-type
-            else: s.irrtup = 0          # give up, no normal type possible
-        if s.irrtup:                    # only add normal-type for irregular tuplets
+            num, den = simplify (ndur, 16 * s.divisions)    # normal-type duration, scaled as the keys of NOTE_TYPES
+            den, s.ndots = dotted (num, den)
+            if sum (durs) % s.tmnum == 0 and num in (1, 3, 7) and den in NOTE_TYPES:
+                s.ntype = str (NOTE_TYPES [den]) # the normal-type
+            else: s.ntype = ''          # give up, no normal type possible
+        # SongScribe trusts the ratio only when <normal-type> states it, and derives one from the beat otherwise
+        if s.ntype and (s.irrtup or s.songscribe):
             for dur, tmod in s.tupnts:  # add normal-type to all modifiers
                 addElemT (tmod, 'normal-type', s.ntype, lev + 1)
+                for i in range (s.ndots): addElem (tmod, E.Element ('normal-dot'), lev + 1)
         s.tupnts = []                   # reset the tuplet buffer
 
     def doNotations (s, n, decos, decosNode, ptup, alter, tupnotation, tstop, nt, lev):
@@ -1144,6 +1159,10 @@ class MusicXml:
                 else:                n, into, nts = x.t[0], 0, 0
                 if into == 0: into = 3 if n in [2,4,8] else 2
                 if nts == 0: nts = n
+                if s.songscribe and not SONGSCRIBE_MIN_TUPLET <= n <= SONGSCRIBE_MAX_TUPLET:
+                    s.reportAtNode (x, 'Error: SongScribe allows %d to %d notes in a tuplet, not %d'
+                        % (SONGSCRIBE_MIN_TUPLET, SONGSCRIBE_MAX_TUPLET, n))
+                    raise SongScribeError ()
                 s.tmnum, s.tmden, s.ntup = n, into, nts
             elif x.name == 'deco':
                 s.staffDecos (x, maat, lev + 1)   # output staff decos, postpone note decos to next note
@@ -1530,7 +1549,7 @@ def getXmlDocs (abc_string, skip=0, num=1, rOpt=False, bOpt=False, fOpt=False): 
             for i, d in enumerate (ds): d.text = str (ss [i] // deler)
             for d in score.iter ('divisions'): d.text = str (int (d.text) // deler)
             xml_docs.append (score)
-        except AbcSyntaxError:
+        except (AbcSyntaxError, SongScribeError):
             pass         # output already printed
         except Exception as err:
             info ('an exception occurred.\n%s' % err)
