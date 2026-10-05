@@ -110,7 +110,12 @@ class SearchFilesThread(threading.Thread):
 
 # 1.3.6 [SS] 2014-11-30
     def find_abc_string(self, path, search_parts):
-        wholefile = read_abc_file(path)
+        try:
+            wholefile = read_abc_file(path)
+        except LookupError:
+            # the file declares a charset Python does not know
+            return
+
         prev_found_tune_positions = None
         for search_part in search_parts:
             found_tune_positions = {}

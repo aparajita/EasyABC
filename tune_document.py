@@ -187,7 +187,13 @@ class TuneDocument(object):
             wx.MessageBox(_("Could not find file.\nIt may have been moved or deleted. Choose File,Open to locate it."), _("File not found"), wx.OK)
             return
 
-        text = abc_bytes_to_text(file_as_bytes)
+        try:
+            text = abc_bytes_to_text(file_as_bytes)
+        except LookupError as e:
+            wx.MessageBox(_("The character set declared in this file is not recognized, so it cannot be loaded.\n\n%s") % e,
+                          _("Unknown character set"), wx.OK | wx.ICON_ERROR)
+            return
+
         text = fix_end_of_line_sequence(text)
 
         self.current_file = filepath
