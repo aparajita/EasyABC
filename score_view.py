@@ -593,8 +593,9 @@ class ScoreView(object):
                 closest_note_indice_p2 = musicpane_current_page.get_indices_for_row_col(closest_note_data_p2.row,closest_note_data_p2.col)
             closest_xy = (closest_note_data_p2.x,closest_note_data_p2.y)
             musicpane_current_page.clear_note_selection()
+            # Indices left over from another page would point past this page's notes.
+            self.selected_note_indices = []
             if selection_multi_notes:
-                self.selected_note_indices = []
                 for i in selected_indices:
                     musicpane_current_page.add_note_to_selection(i)
                     self.selected_note_indices.append(i)
@@ -606,8 +607,9 @@ class ScoreView(object):
             self.selected_note_descs = [musicpane_current_page.notes[i] for i in self.selected_note_indices]
         elif select_closest_note:
             musicpane_current_page.clear_note_selection()
-            if select_closest_note:
-                wx.CallAfter(music_pane.redraw)
+            self.selected_note_indices = []
+            self.selected_note_descs = []
+            wx.CallAfter(music_pane.redraw)
 
         if closest_note_data_p1 is not None and ((current_position_is_p1 and
                     closest_note_data_p1.row in musicpane_current_page.notes_in_row)
