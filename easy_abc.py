@@ -665,44 +665,44 @@ class MainFrame(wx.Frame):
     def do_command(self, cmd):
         self.editor.CmdKeyExecute(cmd)
 
+    def send_edit_command_to_focus(self, method_name):
+        # FindFocus() returns None when no window of this app has focus, and the
+        # focused window may be one without text editing, such as the music pane.
+        command = getattr(self.FindFocus(), method_name, None)
+        if command is not None:
+            command()
+
     def OnUndo(self, evt):      #self.do_command(stc.STC_CMD_UNDO)
         if self.tune_list.HasFocus():
             return
-        widget = self.FindFocus()
-        widget.Undo()
+        self.send_edit_command_to_focus('Undo')
     def OnRedo(self, evt):      #self.do_command(stc.STC_CMD_REDO)
         if self.tune_list.HasFocus():
             return
-        widget = self.FindFocus()
-        widget.Redo()
+        self.send_edit_command_to_focus('Redo')
     def OnCut(self, evt):       #self.do_command(stc.STC_CMD_CUT)
         if self.tune_list.HasFocus():
             return
-        widget = self.FindFocus()
-        widget.Cut()
+        self.send_edit_command_to_focus('Cut')
     def OnCopy(self, evt):      #self.do_command(stc.STC_CMD_COPY)
         if self.tune_list.HasFocus():
             self.exporter.OnExportToClipboard(evt)
         else:
-            widget = self.FindFocus()
-            widget.Copy()
+            self.send_edit_command_to_focus('Copy')
     def OnPaste(self, evt):    #self.do_command(stc.STC_CMD_PASTE)
         if self.tune_list.HasFocus():
             return
-        widget = self.FindFocus()
-        widget.Paste()
+        self.send_edit_command_to_focus('Paste')
     def OnDelete(self, evt):    #self.do_command(stc.STC_CMD_CLEAR)
         if self.tune_list.HasFocus():
             return
-        widget = self.FindFocus()
-        widget.Clear()
+        self.send_edit_command_to_focus('Clear')
     def OnSelectAll(self, evt): #self.do_command(stc.STC_CMD_SELECTALL)
         if self.tune_list.HasFocus():
             for i in range(self.tune_list.GetItemCount()):
                 self.tune_list.Select(i,1)
         else:
-            widget = self.FindFocus()
-            widget.SelectAll()
+            self.send_edit_command_to_focus('SelectAll')
 
     def OnAbout(self, evt):
         dlg = AboutFrame(self)
