@@ -158,6 +158,11 @@ def addDirection (parent, elems, lev, gstaff, subelms=[], placement='below', cue
     if gstaff: addElemT (dir, 'staff', str (gstaff), lev + 1)
     return dir
 
+def mkWords (text, rightAligned=False):
+    words = E.Element ('words', justify='right', halign='right') if rightAligned else E.Element ('words')
+    words.text = text
+    return words
+
 def removeElems (root_elem, parent_str, elem_str):
     for p in root_elem.findall (parent_str):
         e = p.find (elem_str)
@@ -835,7 +840,7 @@ class MusicXml:
                 s.navigationDirection (maat, E.Element (d), abc_decorations.musicxml (d), lev, gstaff)
             elif kind is DecorationKind.NAVIGATION_WORDS:
                 mark = abc_decorations.musicxml (d)
-                words = E.Element ('words', justify='right', halign='right'); words.text = mark.text   # ends at its anchor, as engravers set these phrases
+                words = mkWords (mark.text, rightAligned=True)   # ends at its anchor, as engravers set these phrases
                 s.navigationDirection (maat, words, mark.sound, lev, gstaff)
             elif kind is DecorationKind.SLUR_START: s.slurbeg.append (d)   # start slur on next note
             elif kind is DecorationKind.TREMOLO_PAIR:   # duplet tremolo sequence
@@ -855,7 +860,7 @@ class MusicXml:
     def doFields (s, maat, fieldmap, lev):
         def instDir (midelm, midnum, dirtxt):
             instId = 'I%s-%s' % (s.pid, s.vid)
-            words = E.Element ('words'); words.text = dirtxt % midnum
+            words = mkWords (dirtxt % midnum)
             snd = E.Element ('sound')
             mi = E.Element ('midi-instrument', id=instId)
             dir = addDirection (maat, words, lev, gstaff, placement='above')
@@ -1028,7 +1033,7 @@ class MusicXml:
         elems = []  # [(element, sub-elements)] will be added as direction-types
         if rtxt:
             num, den, upm = 1, 4, s.tempoMap.get (rtxt.group (1).lower ().strip (), 120)
-            words = E.Element ('words'); words.text = rtxt.group (1)
+            words = mkWords (rtxt.group (1))
             elems.append ((words, []))
         if t:
             try:
@@ -1121,6 +1126,8 @@ class MusicXml:
             addElem (maat, e, lev + 1)
             s.linebrk = 0
         if fieldmap: s.doFields (maat, fieldmap, lev + 1)
+        if s.songscribe:    # these tunes are unmetered, so an invisible rest is only a mistaken spacer
+            t = [x for x in t if not (x.name == 'rest' and 'x' in x.t)]
         for it, x in enumerate (t):
             if x.name == 'note' or x.name == 'rest':
                 if x.dur.t[0] == 0:  # a leading zero was used for stemmless in abcm2ps, we only support !stemless!
@@ -1169,8 +1176,8 @@ class MusicXml:
             elif x.name == 'text':
                 pos, text = x.t[:2]
                 place = 'above' if pos == '^' else 'below'
-                words = E.Element ('words')
-                words.text = text
+                atBar = it + 1 < len (t) and t[it + 1].name == 'rbar'
+                words = mkWords (text, rightAligned=s.songscribe and atBar)   # a phrase closing the measure ends at its bar
                 gstaff = s.layout.staff_of (s.vid)    # staff number of the current voice
                 addDirection (maat, words, lev + 1, gstaff, placement=place)
             elif x.name == 'inline':
