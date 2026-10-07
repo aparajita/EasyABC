@@ -38,6 +38,9 @@ SONGSCRIBE_SECOND_ENDING = '2'  # with --songscribe, this ending discontinues at
 # SongScribe rejects a file as corrupt when a tuplet's <actual-notes> is outside this range: TupletGrade
 SONGSCRIBE_MIN_TUPLET = 2
 SONGSCRIBE_MAX_TUPLET = 7
+# with --songscribe, these decorations join a grace note to the note it ornaments: SongScribe reads only a slide as its glissando
+SONGSCRIBE_GRACE_SLIDE_START = '-('
+SONGSCRIBE_GRACE_SLIDE_STOP = '-)'
 
 class SongScribeError (Exception):  # the tune holds what SongScribe cannot open; the reason is already reported
     pass
@@ -474,10 +477,12 @@ class MusicXml:
         decos = s.nextdecos             # decorations encountered so far
         ndeco = getattr (n, 'deco', 0)  # possible decorations of notes of a chord
         if ndeco:                       # add decorations, translate used defined symbols; use its own position
-            decos += [s.usrSyms.get (d, d).strip ('!+') for d in ndeco.t]
+            decos += [s.decoName (d) for d in ndeco.t]
             decosNode = ndeco
         else:                            # else the position of the pending (non-chord) deco group, if any
             decosNode = s.nextdecosNode
+        graceSlide = getattr (n, 'graceSlide', '')
+        if graceSlide: decos.append (graceSlide)
         s.nextdecos = []
         s.nextdecosNode = None
         if s.tabStaff == s.pid and s.fOpt and n.name != 'rest':  # force fret/string allocation if explicit string decoration is missing
@@ -510,7 +515,8 @@ class MusicXml:
         nt = E.Element ('note')
         if isgrace:                     # a grace note (and possibly a chord note)
             grace = E.Element ('grace')
-            if s.acciatura: grace.set ('slash', 'yes'); s.acciatura = 0
+            if s.acciatura and not s.songscribe: grace.set ('slash', 'yes')    # SongScribe has only an unslashed grace note
+            s.acciatura = 0
             addElem (nt, grace, lev + 1)
             dvs = rdvs = 0              # no (real) duration for a grace note
             if den <= 16: den = 32      # not longer than 1/8 for a grace note
@@ -630,6 +636,9 @@ class MusicXml:
             if getattr (n, 'chord', 0): continue    # skip chord notes
             if pt == ptup: continue                 # skip correct single note tie
             if getattr (n, 'grace', 0): continue    # skip grace notes
+            if s.songscribe:                        # a SongScribe tune has no slurs to convert the tie into
+                s.reportAtNode (n, 'Error: SongScribe ties only notes of the same pitch')
+                raise SongScribeError ()
             s.reportAtNode (n, 'tie between different pitches: %s%s converted to slur' % pt)
             del s.ties [pt]                         # remove the note from pending ties
             e = [t for t in ntelm.findall ('tie') if t.get ('type') == 'start'][0]  # get the tie start element
@@ -820,11 +829,33 @@ class MusicXml:
                 pbm.text = 'end'
         s.prevNote = None
 
+    def decoName (s, d):    # a written decoration without its delimiters, after U: substitution
+        return s.usrSyms.get (d, d).strip ('!+')
+
+    def decoKind (s, d):    # the kind of a written decoration
+        return abc_decorations.classify (s.decoName (d))
+
+    def stripSlurs (s, t):  # SongScribe draws no slurs
+        for x in t:
+            if x.name == 'deco': x.t = [d for d in x.t if s.decoKind (d) is not DecorationKind.SLUR_START]
+            elif hasattr (x, 'slurs'): del x.slurs
+
+    def markGraceSlides (s, t):    # a slide joins a grace note to the note it ornaments, unless either has a written slide
+        prev, prevSlid, slid = None, False, False   # the previous note or rest, and whether a written slide decorates it or the next one
+        for x in t:
+            if x.name == 'deco':
+                slid = slid or any (s.decoKind (d) is DecorationKind.SLIDE for d in x.t)
+            elif x.name == 'note' or x.name == 'rest':
+                host = x.name == 'note' and not getattr (x, 'grace', 0)
+                if host and getattr (prev, 'grace', 0) and not (prevSlid or slid):
+                    prev.graceSlide, x.graceSlide = SONGSCRIBE_GRACE_SLIDE_START, SONGSCRIBE_GRACE_SLIDE_STOP
+                prev, prevSlid, slid = x, slid, False
+
     def staffDecos (s, decoObj, maat, lev):
         gstaff = s.layout.staff_of (s.vid)        # staff number of the current voice
         decos = decoObj.t
         for d in decos:
-            d = s.usrSyms.get (d, d).strip ('!+')   # try to replace user defined symbol
+            d = s.decoName (d)
             kind = abc_decorations.classify (d)
             if kind is DecorationKind.DYNAMIC:
                 dynel = E.Element ('dynamics')
@@ -1128,6 +1159,8 @@ class MusicXml:
         if fieldmap: s.doFields (maat, fieldmap, lev + 1)
         if s.songscribe:    # these tunes are unmetered, so an invisible rest is only a mistaken spacer
             t = [x for x in t if not (x.name == 'rest' and 'x' in x.t)]
+            s.stripSlurs (t)
+            s.markGraceSlides (t)
         for it, x in enumerate (t):
             if x.name == 'note' or x.name == 'rest':
                 if x.dur.t[0] == 0:  # a leading zero was used for stemmless in abcm2ps, we only support !stemless!
